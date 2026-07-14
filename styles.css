@@ -87,3 +87,14 @@ h3 { margin:18px 0 10px; }
 .blocoVertical { display:block; }
 .blocoVertical strong { display:block; margin-bottom:8px; }
 .btnWarn { background:#f59e0b; color:#111827; width:100%; margin-bottom:10px; }
+
+.alertaErro {
+  background:#fee2e2 !important;
+  border-color:#fecaca !important;
+  color:#991b1b !important;
+}
+
+.badge.financeiroAberto {
+  background:#fee2e2;
+  color:#991b1b;
+}

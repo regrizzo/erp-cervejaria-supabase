@@ -9,7 +9,8 @@ const state = {
   insumos: [],
   clientes: [],
   producoesFermentando: [],
-  fermentosReuso: []
+  fermentosReuso: [],
+  debitosPhenomena: []
 };
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -109,6 +110,7 @@ function toggleForm(id) {
     if (id === "formColetaFermento") prepararFormColetaFermento();
     if (id === "formDescarteFermento") prepararFormDescarteFermento();
     if (id === "formRetiradaPhenomena") prepararFormRetiradaPhenomena();
+    if (id === "formPagamentoPhenomena") prepararFormPagamentoPhenomena();
   }
 }
 
@@ -125,6 +127,10 @@ function mostrarErro(id, msg) {
 
 function fmt(n, casas=0) {
   return Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: casas });
+}
+
+function fmtMoeda(n) {
+  return Number(n || 0).toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
 }
 
 function litrosBarris(q10,q20,q30,q50) {
@@ -627,8 +633,18 @@ function atualizarResumoEnvase() {
   const total = litrosFull + incompleto;
   const produzido = prod ? Number(prod.litros_produzidos || 0) : 0;
   const perda = produzido ? Math.max(0, produzido - total) : 0;
+  const excesso = produzido ? Math.max(0, total - produzido) : 0;
   const el = document.getElementById("envaseResumo");
-  if (el) el.innerText = `Total envasado: ${fmt(total,2)} L | Barris completos: ${fmt(litrosFull,2)} L | Perda estimada: ${fmt(perda,2)} L`;
+
+  if (el) {
+    if (excesso > 0) {
+      el.classList.add("alertaErro");
+      el.innerText = `ATENÇÃO: envase maior que a produção. Produzido: ${fmt(produzido,2)} L | Tentando envasar: ${fmt(total,2)} L | Excesso: ${fmt(excesso,2)} L`;
+    } else {
+      el.classList.remove("alertaErro");
+      el.innerText = `Total envasado: ${fmt(total,2)} L | Barris completos: ${fmt(litrosFull,2)} L | Perda estimada: ${fmt(perda,2)} L`;
+    }
+  }
 }
 
 async function salvarEnvase() {
@@ -655,7 +671,31 @@ async function salvarEnvase() {
 
   const litrosFull = litrosBarris(q10,q20,q30,q50);
   const total = litrosFull + incompleto;
-  const perda = Math.max(0, Number(prod.litros_produzidos || 0) - total);
+  const produzido = Number(prod.litros_produzidos || 0);
+
+  const { data: envasesAnteriores, error: envasesAnterioresErro } = await sb.from("envases")
+    .select("litros_total")
+    .eq("lote", lote);
+
+  if (envasesAnterioresErro) {
+    mostrarErro("envaseErro", envasesAnterioresErro.message);
+    return;
+  }
+
+  const jaEnvasado = (envasesAnteriores || []).reduce((s,e) => s + Number(e.litros_total || 0), 0);
+  const disponivelParaEnvase = Math.max(0, produzido - jaEnvasado);
+
+  if (total > disponivelParaEnvase) {
+    const excesso = total - disponivelParaEnvase;
+    mostrarErro(
+      "envaseErro",
+      `Envase bloqueado: o lote tem ${fmt(produzido,2)} L produzidos, ${fmt(jaEnvasado,2)} L já envasados e só restam ${fmt(disponivelParaEnvase,2)} L disponíveis. Você tentou envasar ${fmt(total,2)} L. Excesso: ${fmt(excesso,2)} L.`
+    );
+    atualizarResumoEnvase();
+    return;
+  }
+
+  const perda = Math.max(0, disponivelParaEnvase - total);
 
   const { error: envErr } = await sb.from("envases").insert({
     producao_id: prod.id,
@@ -1417,11 +1457,20 @@ async function carregarPhenomena(force=false) {
   if (state.loaded.phenomena && !force) return;
   await carregarBaseCadastros();
 
-  const [estoque, entradas, retiradas] = await Promise.all([
+  const [estoque, entradas, retiradas, debitos, pagamentos] = await Promise.all([
     sb.from("estoque_cerveja").select("*").eq("origem","PHENOMENA").order("cerveja_nome"),
     sb.from("phenomena_entradas").select("*").order("criado_em", { ascending:false }).limit(20),
-    sb.from("movimentacoes").select("*").eq("tipo","RETIRADA PHENOMENA").order("criado_em", { ascending:false }).limit(20)
+    sb.from("movimentacoes").select("*").eq("tipo","RETIRADA PHENOMENA").order("criado_em", { ascending:false }).limit(20),
+    sb.from("phenomena_debitos").select("*").order("criado_em", { ascending:false }).limit(100),
+    sb.from("phenomena_pagamentos").select("*").order("criado_em", { ascending:false }).limit(20)
   ]);
+
+  state.debitosPhenomena = debitos.data || [];
+
+  const debitosAbertos = state.debitosPhenomena.filter(d => d.status !== "PAGO");
+  const saldoAberto = debitosAbertos.reduce((s,d) => s + (Number(d.valor_total || 0) - Number(d.valor_pago || 0)), 0);
+  document.getElementById("phenSaldoAberto").innerText = fmtMoeda(saldoAberto);
+  document.getElementById("phenQtdDebitos").innerText = debitosAbertos.length;
 
   const ebox = document.getElementById("estoquePhenomena");
   const rows = estoque.data || [];
@@ -1434,6 +1483,38 @@ async function carregarPhenomena(force=false) {
           <div class="sub">10L=${r.q10 || 0} • 20L=${r.q20 || 0} • 30L=${r.q30 || 0} • 50L=${r.q50 || 0}</div>
         </div>
         <span class="badge ${Number(r.litros || 0) <= 0 ? "zero" : ""}">${fmt(r.litros)} L</span>
+      </div>
+    `);
+  });
+
+  const dbox = document.getElementById("debitosPhenomena");
+  dbox.innerHTML = state.debitosPhenomena.length ? "" : '<div class="item"><span class="sub">Nenhum débito Phenomena.</span></div>';
+  state.debitosPhenomena.forEach(d => {
+    const aberto = Number(d.valor_total || 0) - Number(d.valor_pago || 0);
+    dbox.insertAdjacentHTML("beforeend", `
+      <div class="item">
+        <div>
+          <strong>${escapeHtml(d.cerveja_nome)}</strong>
+          <div class="sub">${dataHoraBR(d.criado_em)} • ${fmt(d.litros)} L • ${escapeHtml(d.status || "ABERTO")}</div>
+          <div class="sub">Total ${fmtMoeda(d.valor_total)} • Pago ${fmtMoeda(d.valor_pago)} • Aberto ${fmtMoeda(aberto)}</div>
+          <div class="sub">${escapeHtml(d.observacao || "")}</div>
+        </div>
+        <span class="badge ${d.status === "PAGO" ? "" : "zero"}">${fmtMoeda(aberto)}</span>
+      </div>
+    `);
+  });
+
+  const pbox = document.getElementById("pagamentosPhenomena");
+  pbox.innerHTML = (pagamentos.data || []).length ? "" : '<div class="item"><span class="sub">Nenhum pagamento registrado.</span></div>';
+  (pagamentos.data || []).forEach(p => {
+    pbox.insertAdjacentHTML("beforeend", `
+      <div class="item">
+        <div>
+          <strong>Pagamento Phenomena</strong>
+          <div class="sub">${dataHoraBR(p.criado_em)} • ${escapeHtml(p.responsavel || "")}</div>
+          <div class="sub">${escapeHtml(p.observacao || "")}</div>
+        </div>
+        <span class="badge">${fmtMoeda(p.valor)}</span>
       </div>
     `);
   });
@@ -1468,6 +1549,127 @@ async function carregarPhenomena(force=false) {
   });
 
   state.loaded.phenomena = true;
+}
+
+function atualizarResumoRetiradaPhenomena() {
+  const q10 = Number(document.getElementById("phenRetQ10")?.value || 0);
+  const q20 = Number(document.getElementById("phenRetQ20")?.value || 0);
+  const q30 = Number(document.getElementById("phenRetQ30")?.value || 0);
+  const q50 = Number(document.getElementById("phenRetQ50")?.value || 0);
+  const litros = litrosBarris(q10,q20,q30,q50);
+  const valor = litros * 3;
+  const el = document.getElementById("phenRetResumo");
+  if (el) el.innerText = `Total: ${fmt(litros)} L • Débito: ${fmtMoeda(valor)} • Regra: R$ 3,00/L`;
+}
+
+async function prepararFormPagamentoPhenomena() {
+  await carregarPhenomena(true);
+  const sel = document.getElementById("phenPagDebito");
+  sel.innerHTML = '<option value="">Selecionar débito...</option>';
+
+  state.debitosPhenomena
+    .filter(d => d.status !== "PAGO")
+    .sort((a,b) => new Date(a.criado_em) - new Date(b.criado_em))
+    .forEach(d => {
+      const aberto = Number(d.valor_total || 0) - Number(d.valor_pago || 0);
+      const op = document.createElement("option");
+      op.value = d.id;
+      op.dataset.aberto = aberto;
+      op.dataset.total = d.valor_total || 0;
+      op.dataset.pago = d.valor_pago || 0;
+      op.textContent = `${d.cerveja_nome} — ${dataHoraBR(d.criado_em)} — aberto ${fmtMoeda(aberto)}`;
+      sel.appendChild(op);
+    });
+
+  atualizarResumoPagamentoPhenomena();
+}
+
+function atualizarResumoPagamentoPhenomena() {
+  const sel = document.getElementById("phenPagDebito");
+  const op = sel ? sel.options[sel.selectedIndex] : null;
+  const el = document.getElementById("phenPagResumo");
+
+  if (!op || !op.value) {
+    if (el) el.innerText = "Selecione um débito.";
+    return;
+  }
+
+  if (el) {
+    el.innerText = `Aberto: ${fmtMoeda(op.dataset.aberto)} • Total: ${fmtMoeda(op.dataset.total)} • Já pago: ${fmtMoeda(op.dataset.pago)}`;
+  }
+
+  const valorInput = document.getElementById("phenPagValor");
+  if (valorInput && !valorInput.value) valorInput.value = Number(op.dataset.aberto || 0).toFixed(2);
+}
+
+async function salvarPagamentoPhenomena() {
+  mostrarErro("phenPagErro", "");
+  const debitoId = document.getElementById("phenPagDebito").value;
+  const valor = Number(document.getElementById("phenPagValor").value || 0);
+  const responsavel = document.getElementById("phenPagResp").value.trim();
+  const observacao = document.getElementById("phenPagObs").value.trim();
+
+  if (!debitoId || valor <= 0) {
+    mostrarErro("phenPagErro", "Selecione o débito e informe o valor pago.");
+    return;
+  }
+
+  const { data: debito, error: buscaErro } = await sb.from("phenomena_debitos")
+    .select("*")
+    .eq("id", debitoId)
+    .single();
+
+  if (buscaErro || !debito) {
+    mostrarErro("phenPagErro", buscaErro ? buscaErro.message : "Débito não encontrado.");
+    return;
+  }
+
+  const aberto = Number(debito.valor_total || 0) - Number(debito.valor_pago || 0);
+  if (valor > aberto) {
+    mostrarErro("phenPagErro", `Valor maior que o saldo aberto. Aberto: ${fmtMoeda(aberto)}.`);
+    return;
+  }
+
+  const novoPago = Number(debito.valor_pago || 0) + valor;
+  const novoStatus = novoPago >= Number(debito.valor_total || 0) ? "PAGO" : "PARCIAL";
+
+  const { error: pagErro } = await sb.from("phenomena_pagamentos").insert({
+    debito_id: debitoId,
+    valor,
+    responsavel,
+    observacao
+  });
+
+  if (pagErro) {
+    mostrarErro("phenPagErro", pagErro.message);
+    return;
+  }
+
+  const { error: updErro } = await sb.from("phenomena_debitos").update({
+    valor_pago: novoPago,
+    status: novoStatus,
+    pago_em: novoStatus === "PAGO" ? new Date().toISOString() : null
+  }).eq("id", debitoId);
+
+  if (updErro) {
+    mostrarErro("phenPagErro", updErro.message);
+    return;
+  }
+
+  await sb.from("movimentacoes").insert({
+    tipo:"PAGAMENTO PHENOMENA",
+    categoria:"FINANCEIRO",
+    item_nome:debito.cerveja_nome,
+    quantidade:valor,
+    unidade:"R$",
+    observacao,
+    responsavel
+  });
+
+  ["phenPagValor","phenPagResp","phenPagObs"].forEach(id => document.getElementById(id).value = "");
+  invalidar("phenomena","auditoria");
+  alert("Pagamento Phenomena registrado.");
+  carregarPhenomena(true);
 }
 
 async function salvarRetiradaPhenomena() {
@@ -1513,9 +1715,14 @@ async function salvarRetiradaPhenomena() {
   const nq30 = Number(atual.q30 || 0) - q30;
   const nq50 = Number(atual.q50 || 0) - q50;
   const litros = litrosBarris(q10,q20,q30,q50);
+  const valorLitro = 3;
+  const valorTotal = litros * valorLitro;
   const cerveja = state.cervejas.find(c => c.nome === cerveja_nome);
 
-  await sb.from("estoque_cerveja").upsert({
+  const resumo = `Retirada Phenomena\n\nCerveja: ${cerveja_nome}\nLitros: ${fmt(litros)} L\nValor: ${fmtMoeda(valorTotal)}\n\nConfirmar retirada e gerar débito?`;
+  if (!confirm(resumo)) return;
+
+  const { error: estErro } = await sb.from("estoque_cerveja").upsert({
     cerveja_id: cerveja ? cerveja.id : null,
     cerveja_nome,
     origem:"PHENOMENA",
@@ -1524,6 +1731,28 @@ async function salvarRetiradaPhenomena() {
     atualizado_em:new Date().toISOString()
   }, { onConflict:"cerveja_nome,origem" });
 
+  if (estErro) {
+    mostrarErro("phenRetErro", estErro.message);
+    return;
+  }
+
+  const { error: debErro } = await sb.from("phenomena_debitos").insert({
+    cerveja_nome,
+    q10,q20,q30,q50,
+    litros,
+    valor_litro: valorLitro,
+    valor_total: valorTotal,
+    valor_pago: 0,
+    status:"ABERTO",
+    responsavel,
+    observacao: obs
+  });
+
+  if (debErro) {
+    mostrarErro("phenRetErro", "A retirada baixou o estoque, mas houve erro ao gerar débito: " + debErro.message);
+    return;
+  }
+
   await sb.from("movimentacoes").insert({
     tipo:"RETIRADA PHENOMENA",
     categoria:"CERVEJA",
@@ -1531,14 +1760,26 @@ async function salvarRetiradaPhenomena() {
     quantidade:-Math.abs(litros),
     unidade:"L",
     origem:"PHENOMENA",
+    observacao:`Débito gerado: ${fmtMoeda(valorTotal)}${obs ? " — " + obs : ""}`,
+    responsavel
+  });
+
+  await sb.from("movimentacoes").insert({
+    tipo:"DÉBITO PHENOMENA",
+    categoria:"FINANCEIRO",
+    item_nome:cerveja_nome,
+    quantidade:valorTotal,
+    unidade:"R$",
+    origem:"PHENOMENA",
     observacao:obs,
     responsavel
   });
 
   ["phenRetQ10","phenRetQ20","phenRetQ30","phenRetQ50"].forEach(id => document.getElementById(id).value = "0");
   ["phenRetResp","phenRetObs"].forEach(id => document.getElementById(id).value = "");
+  atualizarResumoRetiradaPhenomena();
   invalidar("phenomena","estoque","inicio","auditoria");
-  alert("Retirada Phenomena registrada.");
+  alert("Retirada Phenomena registrada e débito gerado.");
   carregarPhenomena(true);
   carregarInicio(true);
 }
@@ -1760,7 +2001,7 @@ async function gerarBackupJson() {
     "cervejas","insumos","clientes","estoque_cerveja","estoque_insumos",
     "producoes","producao_insumos","dry_hopping","envases","saidas",
     "entradas_insumos","ajustes_estoque","fermento_reuso","fermento_historico",
-    "phenomena_entradas","movimentacoes","configuracoes","backups"
+    "phenomena_entradas","phenomena_debitos","phenomena_pagamentos","movimentacoes","configuracoes","backups"
   ];
 
   const backup = {

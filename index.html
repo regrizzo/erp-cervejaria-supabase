@@ -39,7 +39,7 @@
     <header class="topbar">
       <div>
         <div class="appTitle">ERP Cervejaria</div>
-        <div class="appSub">Supabase • V2 migração</div>
+        <div class="appSub">Supabase • V7 débito Phenomena</div>
       </div>
       <button class="btnGhost" onclick="logout()">Sair</button>
     </header>
@@ -445,36 +445,73 @@
           <button class="btnSmall" onclick="carregarPhenomena(true)">Atualizar</button>
         </div>
 
-        <button class="btnMain" onclick="toggleForm('formRetiradaPhenomena')">📤 Retirar Phenomena</button>
+        <div class="actionGrid">
+          <button class="btnMain" onclick="toggleForm('formRetiradaPhenomena')">📤 Retirar / gerar débito</button>
+          <button class="btnSuccess" onclick="toggleForm('formPagamentoPhenomena')">✅ Baixar pagamento</button>
+        </div>
 
         <div id="formRetiradaPhenomena" class="formBox" style="display:none;">
           <h3>Retirada do estoque Phenomena</h3>
-          <p class="muted">Esta retirada baixa apenas a origem PHENOMENA. Ela não gera débito financeiro neste app.</p>
+          <p class="muted">Esta retirada baixa a origem PHENOMENA e gera débito financeiro a R$ 3,00 por litro.</p>
 
           <label>Cerveja</label>
           <select id="phenRetiradaCerveja"></select>
 
           <div class="linha2">
-            <div><label>Barris 10L</label><input id="phenRetQ10" type="number" min="0" value="0"></div>
-            <div><label>Barris 20L</label><input id="phenRetQ20" type="number" min="0" value="0"></div>
+            <div><label>Barris 10L</label><input id="phenRetQ10" type="number" min="0" value="0" oninput="atualizarResumoRetiradaPhenomena()"></div>
+            <div><label>Barris 20L</label><input id="phenRetQ20" type="number" min="0" value="0" oninput="atualizarResumoRetiradaPhenomena()"></div>
           </div>
           <div class="linha2">
-            <div><label>Barris 30L</label><input id="phenRetQ30" type="number" min="0" value="0"></div>
-            <div><label>Barris 50L</label><input id="phenRetQ50" type="number" min="0" value="0"></div>
+            <div><label>Barris 30L</label><input id="phenRetQ30" type="number" min="0" value="0" oninput="atualizarResumoRetiradaPhenomena()"></div>
+            <div><label>Barris 50L</label><input id="phenRetQ50" type="number" min="0" value="0" oninput="atualizarResumoRetiradaPhenomena()"></div>
           </div>
 
           <label>Responsável</label>
           <input id="phenRetResp" placeholder="Quem retirou">
 
+          <div class="infoBox" id="phenRetResumo">Total: 0 L • Débito: R$ 0,00</div>
+
           <label>Observação</label>
           <textarea id="phenRetObs"></textarea>
 
-          <button onclick="salvarRetiradaPhenomena()">Registrar retirada</button>
+          <button onclick="salvarRetiradaPhenomena()">Registrar retirada e gerar débito</button>
           <div id="phenRetErro" class="erro"></div>
+        </div>
+
+        <div id="formPagamentoPhenomena" class="formBox" style="display:none;">
+          <h3>Baixar pagamento Phenomena</h3>
+
+          <label>Débito aberto</label>
+          <select id="phenPagDebito" onchange="atualizarResumoPagamentoPhenomena()"></select>
+
+          <label>Valor pago</label>
+          <input id="phenPagValor" type="number" min="0" step="0.01" placeholder="R$">
+
+          <label>Responsável</label>
+          <input id="phenPagResp" placeholder="Quem registrou">
+
+          <label>Observação</label>
+          <textarea id="phenPagObs"></textarea>
+
+          <div class="infoBox" id="phenPagResumo">Selecione um débito.</div>
+
+          <button onclick="salvarPagamentoPhenomena()">Registrar baixa</button>
+          <div id="phenPagErro" class="erro"></div>
+        </div>
+
+        <div class="gridCards">
+          <div class="card"><span>Saldo Phenomena aberto</span><strong id="phenSaldoAberto">R$ 0,00</strong></div>
+          <div class="card"><span>Débitos abertos</span><strong id="phenQtdDebitos">0</strong></div>
         </div>
 
         <h3>Estoque Phenomena</h3>
         <div id="estoquePhenomena" class="lista"></div>
+
+        <h3>Débitos Phenomena</h3>
+        <div id="debitosPhenomena" class="lista"></div>
+
+        <h3>Pagamentos Phenomena</h3>
+        <div id="pagamentosPhenomena" class="lista"></div>
 
         <h3>Entradas Phenomena</h3>
         <div id="entradasPhenomena" class="lista"></div>
