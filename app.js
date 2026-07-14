@@ -1,14 +1,14 @@
 
 const SUPABASE_URL = "https://bwmkdalsupuzrsxdlrcm.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3bWtkYWxzdXB1enJzeGRscmNtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5ODY2MDYsImV4cCI6MjA5OTU2MjYwNn0.OJuCLFtIr5K9noT-w2jp0mW_SctmIMmv5mtfbSEc6ZE";
-
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const state = {
   loaded: {},
   cervejas: [],
   insumos: [],
-  clientes: []
+  clientes: [],
+  producoesFermentando: []
 };
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -69,7 +69,7 @@ function mostrarTela(nome) {
   if (nome === "producao") btns[1].classList.add("active");
   if (nome === "estoque") btns[2].classList.add("active");
   if (nome === "saidas") btns[3].classList.add("active");
-  if (nome === "mais" || nome === "clientes" || nome === "cadastros") btns[4].classList.add("active");
+  if (["mais","clientes","cadastros"].includes(nome)) btns[4].classList.add("active");
 
   if (nome === "inicio") carregarInicio();
   if (nome === "producao") carregarProducao();
@@ -84,6 +84,14 @@ function toggleForm(id) {
   const aberto = el.style.display === "block";
   document.querySelectorAll(".formBox").forEach(f => f.style.display = "none");
   el.style.display = aberto ? "none" : "block";
+
+  if (!aberto) {
+    if (id === "formProducao") prepararFormProducao();
+    if (id === "formDryHop") prepararFormDryHop();
+    if (id === "formEnvase") prepararFormEnvase();
+    if (id === "formEntradaCerveja") prepararFormEntradaCerveja();
+    if (id === "formEntradaInsumo") prepararFormEntradaInsumo();
+  }
 }
 
 function mostrarErro(id, msg) {
@@ -101,6 +109,14 @@ function fmt(n, casas=0) {
   return Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: casas });
 }
 
+function litrosBarris(q10,q20,q30,q50) {
+  return (Number(q10)||0)*10 + (Number(q20)||0)*20 + (Number(q30)||0)*30 + (Number(q50)||0)*50;
+}
+
+function somaBarris(q10,q20,q30,q50) {
+  return (Number(q10)||0) + (Number(q20)||0) + (Number(q30)||0) + (Number(q50)||0);
+}
+
 function ordenarComZeradosFinal(arr, getNome, getQtd) {
   return [...arr].sort((a,b) => {
     const za = Number(getQtd(a) || 0) <= 0 ? 1 : 0;
@@ -108,6 +124,10 @@ function ordenarComZeradosFinal(arr, getNome, getQtd) {
     if (za !== zb) return za - zb;
     return String(getNome(a)).localeCompare(String(getNome(b)), "pt-BR");
   });
+}
+
+function invalidar(...nomes) {
+  nomes.forEach(n => state.loaded[n] = false);
 }
 
 async function carregarInicio(force=false) {
@@ -131,7 +151,6 @@ async function carregarInicio(force=false) {
   document.getElementById("cardMalte").innerText = fmt(malte, 1) + " KG";
   document.getElementById("cardLupulo").innerText = fmt(lupulo, 1) + " G";
   document.getElementById("cardFermento").innerText = fmt(fermento, 1) + " UN";
-  document.getElementById("resumoInicio").innerText = "Dashboard carregado diretamente do Supabase. As demais telas só carregam quando você abre.";
   state.loaded.inicio = true;
 }
 
@@ -150,35 +169,32 @@ async function carregarBaseCadastros(force=false) {
   state.loaded.baseCadastros = true;
 }
 
+async function carregarProducoesFermentando(force=false) {
+  if (state.loaded.producoesFermentando && !force) return;
+  const { data } = await sb.from("producoes")
+    .select("*")
+    .eq("status","FERMENTANDO")
+    .order("data_producao", { ascending:false });
+  state.producoesFermentando = data || [];
+  state.loaded.producoesFermentando = true;
+}
+
 async function carregarProducao(force=false) {
   if (state.loaded.producao && !force) return;
   await carregarBaseCadastros(force);
+  await carregarProducoesFermentando(force);
+  renderProducoes();
+  state.loaded.producao = true;
+}
 
-  const sel = document.getElementById("prodCerveja");
-  sel.innerHTML = '<option value="">Selecionar cerveja...</option>';
-  state.cervejas.forEach(c => {
-    const op = document.createElement("option");
-    op.value = c.nome;
-    op.textContent = c.nome;
-    sel.appendChild(op);
-  });
-
-  const { data, error } = await sb.from("producoes")
-    .select("*")
-    .eq("status", "FERMENTANDO")
-    .order("data_producao", { ascending:false });
-
+function renderProducoes() {
   const box = document.getElementById("listaProducoes");
-  if (error) {
-    box.innerHTML = '<div class="item">Erro ao carregar produção.</div>';
-    return;
-  }
+  box.innerHTML = state.producoesFermentando.length ? "" : '<div class="item"><span class="sub">Nenhuma cerveja em produção.</span></div>';
 
-  box.innerHTML = (data || []).length ? "" : '<div class="item"><span class="sub">Nenhuma cerveja em produção.</span></div>';
-  (data || []).forEach(p => {
+  state.producoesFermentando.forEach(p => {
     const dias = Math.max(0, Math.floor((new Date() - new Date(p.data_producao + "T00:00:00")) / 86400000));
     box.insertAdjacentHTML("beforeend", `
-      <div class="item">
+      <div class="item searchable">
         <div>
           <strong>${escapeHtml(p.cerveja_nome)}</strong>
           <div class="sub">Lote ${escapeHtml(p.lote)} • ${fmt(p.litros_produzidos)} L</div>
@@ -188,7 +204,162 @@ async function carregarProducao(force=false) {
       </div>
     `);
   });
-  state.loaded.producao = true;
+}
+
+function prepararSelectCervejas(id) {
+  const sel = document.getElementById(id);
+  sel.innerHTML = '<option value="">Selecionar cerveja...</option>';
+  state.cervejas.forEach(c => {
+    const op = document.createElement("option");
+    op.value = c.nome;
+    op.textContent = c.nome;
+    sel.appendChild(op);
+  });
+}
+
+function prepararSelectLotes(id) {
+  const sel = document.getElementById(id);
+  sel.innerHTML = '<option value="">Selecionar lote...</option>';
+  state.producoesFermentando.forEach(p => {
+    const op = document.createElement("option");
+    op.value = p.lote;
+    op.textContent = `${p.lote} — ${p.cerveja_nome} (${fmt(p.litros_produzidos)}L)`;
+    sel.appendChild(op);
+  });
+}
+
+function prepararFormProducao() {
+  prepararSelectCervejas("prodCerveja");
+  prepararSelectInsumos("prodFermento","FERMENTO","Sem fermento");
+  document.getElementById("prodMaltes").innerHTML = "";
+  document.getElementById("prodLupulos").innerHTML = "";
+  adicionarLinhaInsumo("prodMaltes","MALTE");
+  adicionarLinhaInsumo("prodLupulos","LUPULO");
+}
+
+function prepararFormDryHop() {
+  prepararSelectLotes("dryLote");
+  document.getElementById("dryLupulos").innerHTML = "";
+  adicionarLinhaInsumo("dryLupulos","LUPULO");
+}
+
+function prepararFormEnvase() {
+  prepararSelectLotes("envaseLote");
+  atualizarResumoEnvase();
+}
+
+function prepararFormEntradaCerveja() {
+  prepararSelectCervejas("entradaCerveja");
+}
+
+function prepararFormEntradaInsumo() {
+  popularEntradaInsumos();
+}
+
+function prepararSelectInsumos(id, tipo, placeholder) {
+  const sel = document.getElementById(id);
+  sel.innerHTML = `<option value="">${placeholder}</option>`;
+  state.insumos.filter(i => i.tipo === tipo).forEach(i => {
+    const op = document.createElement("option");
+    op.value = i.nome;
+    op.textContent = `${i.nome} (${i.unidade})`;
+    op.dataset.unidade = i.unidade;
+    sel.appendChild(op);
+  });
+}
+
+function adicionarLinhaInsumo(containerId, tipo) {
+  const container = document.getElementById(containerId);
+  const linha = document.createElement("div");
+  linha.className = "linhaInsumo";
+  linha.dataset.tipo = tipo;
+
+  const sel = document.createElement("select");
+  sel.className = "insumoNome";
+  sel.innerHTML = '<option value="">Selecionar...</option>';
+  state.insumos.filter(i => i.tipo === tipo).forEach(i => {
+    const op = document.createElement("option");
+    op.value = i.nome;
+    op.textContent = `${i.nome} (${i.unidade})`;
+    op.dataset.unidade = i.unidade;
+    sel.appendChild(op);
+  });
+
+  const qtd = document.createElement("input");
+  qtd.className = "insumoQtd";
+  qtd.type = "number";
+  qtd.min = "0";
+  qtd.step = "0.001";
+  qtd.placeholder = tipo === "MALTE" ? "KG" : tipo === "LUPULO" ? "G" : "UN";
+
+  const btn = document.createElement("button");
+  btn.className = "btnRemove";
+  btn.type = "button";
+  btn.innerText = "×";
+  btn.onclick = () => linha.remove();
+
+  linha.appendChild(sel);
+  linha.appendChild(qtd);
+  linha.appendChild(btn);
+  container.appendChild(linha);
+}
+
+function coletarLinhasInsumos(containerId, tipo) {
+  const itens = [];
+  document.querySelectorAll(`#${containerId} .linhaInsumo`).forEach(linha => {
+    const nome = linha.querySelector(".insumoNome").value;
+    const quantidade = Number(linha.querySelector(".insumoQtd").value || 0);
+    if (nome && quantidade > 0) {
+      const insumo = state.insumos.find(i => i.tipo === tipo && i.nome === nome);
+      itens.push({ tipo, nome, quantidade, unidade: insumo ? insumo.unidade : unidadePadrao(tipo), insumo_id: insumo ? insumo.id : null });
+    }
+  });
+  return itens;
+}
+
+function unidadePadrao(tipo) {
+  if (tipo === "MALTE") return "KG";
+  if (tipo === "LUPULO") return "G";
+  return "UN";
+}
+
+async function baixarInsumo(tipo, nome, quantidade, unidade, observacao, lote="", etapa="PRODUCAO") {
+  if (!nome || quantidade <= 0) return;
+
+  const { data: atualRows, error: erroBusca } = await sb.from("estoque_insumos")
+    .select("*")
+    .eq("tipo", tipo)
+    .eq("nome", nome)
+    .limit(1);
+
+  if (erroBusca) throw erroBusca;
+
+  const atual = atualRows && atualRows[0] ? atualRows[0] : null;
+  const qtdAtual = Number(atual ? atual.quantidade : 0);
+  const novaQtd = qtdAtual - Number(quantidade);
+
+  const insumo = state.insumos.find(i => i.tipo === tipo && i.nome === nome);
+  const payload = {
+    insumo_id: insumo ? insumo.id : null,
+    tipo,
+    nome,
+    unidade,
+    quantidade: novaQtd,
+    atualizado_em: new Date().toISOString()
+  };
+
+  const { error } = await sb.from("estoque_insumos").upsert(payload, { onConflict:"tipo,nome" });
+  if (error) throw error;
+
+  await sb.from("movimentacoes").insert({
+    tipo: etapa === "DRY_HOPPING" ? "BAIXA DRY HOPPING" : "BAIXA PRODUCAO",
+    categoria: "INSUMO",
+    item_nome: nome,
+    quantidade: -Math.abs(Number(quantidade)),
+    unidade,
+    lote,
+    observacao
+  });
 }
 
 async function salvarProducao() {
@@ -203,26 +374,222 @@ async function salvarProducao() {
     return;
   }
 
+  const maltes = coletarLinhasInsumos("prodMaltes","MALTE");
+  const lupulos = coletarLinhasInsumos("prodLupulos","LUPULO");
+  const fermentoNome = document.getElementById("prodFermento").value;
+  const fermentoQtd = Number(document.getElementById("prodFermentoQtd").value || 0);
+  const fermento = fermentoNome && fermentoQtd > 0 ? state.insumos.find(i => i.tipo === "FERMENTO" && i.nome === fermentoNome) : null;
+
   const cerveja = state.cervejas.find(c => c.nome === cerveja_nome);
-  const { error } = await sb.from("producoes").insert({
+
+  const { data: prod, error } = await sb.from("producoes").insert({
     lote,
     cerveja_nome,
     cerveja_id: cerveja ? cerveja.id : null,
     litros_produzidos,
     observacao,
-    status: "FERMENTANDO"
-  });
+    status: "FERMENTANDO",
+    fermento_tipo: fermentoNome ? "ESTOQUE" : null,
+    fermento_nome: fermentoNome || null
+  }).select().single();
 
   if (error) {
     mostrarErro("prodErro", error.message);
     return;
   }
 
-  ["prodLote","prodLitros","prodObs"].forEach(id => document.getElementById(id).value = "");
-  state.loaded.producao = false;
-  state.loaded.inicio = false;
-  alert("Produção salva.");
+  try {
+    const insumos = [...maltes, ...lupulos];
+    if (fermentoNome && fermentoQtd > 0) insumos.push({
+      tipo:"FERMENTO",
+      nome:fermentoNome,
+      quantidade:fermentoQtd,
+      unidade:fermento ? fermento.unidade : "UN",
+      insumo_id: fermento ? fermento.id : null
+    });
+
+    for (const item of insumos) {
+      await sb.from("producao_insumos").insert({
+        producao_id: prod.id,
+        lote,
+        tipo: item.tipo,
+        insumo_nome: item.nome,
+        quantidade: item.quantidade,
+        unidade: item.unidade,
+        etapa: "PRODUCAO"
+      });
+      await baixarInsumo(item.tipo, item.nome, item.quantidade, item.unidade, `Produção ${cerveja_nome}`, lote, "PRODUCAO");
+    }
+
+    await sb.from("movimentacoes").insert({
+      tipo:"PRODUCAO",
+      categoria:"CERVEJA",
+      item_nome: cerveja_nome,
+      quantidade: litros_produzidos,
+      unidade:"L",
+      lote,
+      observacao
+    });
+
+  } catch(e) {
+    mostrarErro("prodErro", "Produção criada, mas houve erro ao baixar insumos: " + e.message);
+    return;
+  }
+
+  ["prodLote","prodLitros","prodObs","prodFermentoQtd"].forEach(id => document.getElementById(id).value = "");
+  invalidar("producao","producoesFermentando","estoque","inicio");
+  alert("Produção salva e insumos baixados.");
   carregarProducao(true);
+  carregarInicio(true);
+}
+
+async function salvarDryHop() {
+  mostrarErro("dryErro", "");
+  const lote = document.getElementById("dryLote").value;
+  const obs = document.getElementById("dryObs").value.trim();
+  const itens = coletarLinhasInsumos("dryLupulos","LUPULO");
+
+  if (!lote || !itens.length) {
+    mostrarErro("dryErro", "Selecione o lote e pelo menos um lúpulo.");
+    return;
+  }
+
+  const prod = state.producoesFermentando.find(p => p.lote === lote);
+  if (!prod) {
+    mostrarErro("dryErro", "Lote não encontrado.");
+    return;
+  }
+
+  try {
+    for (const item of itens) {
+      await sb.from("dry_hopping").insert({
+        producao_id: prod.id,
+        lote,
+        lupulo_nome: item.nome,
+        quantidade: item.quantidade,
+        unidade: item.unidade,
+        observacao: obs
+      });
+
+      await sb.from("producao_insumos").insert({
+        producao_id: prod.id,
+        lote,
+        tipo: "LUPULO",
+        insumo_nome: item.nome,
+        quantidade: item.quantidade,
+        unidade: item.unidade,
+        etapa: "DRY_HOPPING"
+      });
+
+      await baixarInsumo("LUPULO", item.nome, item.quantidade, item.unidade, obs || "Dry hopping", lote, "DRY_HOPPING");
+    }
+  } catch(e) {
+    mostrarErro("dryErro", e.message);
+    return;
+  }
+
+  document.getElementById("dryObs").value = "";
+  invalidar("estoque","inicio");
+  alert("Dry hopping registrado.");
+  carregarEstoque(true);
+}
+
+function atualizarResumoEnvase() {
+  const lote = document.getElementById("envaseLote")?.value;
+  const prod = state.producoesFermentando.find(p => p.lote === lote);
+  const litrosFull = litrosBarris(
+    document.getElementById("envaseQ10")?.value,
+    document.getElementById("envaseQ20")?.value,
+    document.getElementById("envaseQ30")?.value,
+    document.getElementById("envaseQ50")?.value
+  );
+  const incompleto = Number(document.getElementById("envaseIncompleto")?.value || 0);
+  const total = litrosFull + incompleto;
+  const produzido = prod ? Number(prod.litros_produzidos || 0) : 0;
+  const perda = produzido ? Math.max(0, produzido - total) : 0;
+  const el = document.getElementById("envaseResumo");
+  if (el) el.innerText = `Total envasado: ${fmt(total,2)} L | Barris completos: ${fmt(litrosFull,2)} L | Perda estimada: ${fmt(perda,2)} L`;
+}
+
+async function salvarEnvase() {
+  mostrarErro("envaseErro", "");
+  const lote = document.getElementById("envaseLote").value;
+  const origem = document.getElementById("envaseOrigem").value;
+  const q10 = Number(document.getElementById("envaseQ10").value || 0);
+  const q20 = Number(document.getElementById("envaseQ20").value || 0);
+  const q30 = Number(document.getElementById("envaseQ30").value || 0);
+  const q50 = Number(document.getElementById("envaseQ50").value || 0);
+  const incompleto = Number(document.getElementById("envaseIncompleto").value || 0);
+  const obs = document.getElementById("envaseObs").value.trim();
+
+  if (!lote || (somaBarris(q10,q20,q30,q50) <= 0 && incompleto <= 0)) {
+    mostrarErro("envaseErro", "Selecione o lote e informe o envase.");
+    return;
+  }
+
+  const prod = state.producoesFermentando.find(p => p.lote === lote);
+  if (!prod) {
+    mostrarErro("envaseErro", "Lote não encontrado.");
+    return;
+  }
+
+  const litrosFull = litrosBarris(q10,q20,q30,q50);
+  const total = litrosFull + incompleto;
+  const perda = Math.max(0, Number(prod.litros_produzidos || 0) - total);
+
+  const { error: envErr } = await sb.from("envases").insert({
+    producao_id: prod.id,
+    lote,
+    cerveja_nome: prod.cerveja_nome,
+    origem,
+    q10, q20, q30, q50,
+    litros_barris: litrosFull,
+    litros_incompleto_bar: incompleto,
+    litros_total: total,
+    perda,
+    observacao: obs
+  });
+
+  if (envErr) {
+    mostrarErro("envaseErro", envErr.message);
+    return;
+  }
+
+  if (litrosFull > 0) {
+    const erroEstoque = await somarEstoqueCerveja(prod.cerveja_nome, origem, q10,q20,q30,q50, obs || "Envase");
+    if (erroEstoque) {
+      mostrarErro("envaseErro", erroEstoque.message);
+      return;
+    }
+
+    if (origem === "PHENOMENA") {
+      await sb.from("phenomena_entradas").insert({
+        cerveja_nome: prod.cerveja_nome,
+        q10,q20,q30,q50,
+        litros: litrosFull,
+        observacao: "Envase Phenomena: " + obs
+      });
+    }
+  }
+
+  await sb.from("producoes").update({ status:"ENVASADO" }).eq("id", prod.id);
+
+  await sb.from("movimentacoes").insert({
+    tipo:"ENVASE",
+    categoria:"CERVEJA",
+    item_nome: prod.cerveja_nome,
+    quantidade: total,
+    unidade:"L",
+    origem,
+    lote,
+    observacao: obs
+  });
+
+  ["envaseQ10","envaseQ20","envaseQ30","envaseQ50","envaseIncompleto","envaseObs"].forEach(id => document.getElementById(id).value = id === "envaseIncompleto" ? "0" : "0");
+  invalidar("producao","producoesFermentando","estoque","inicio");
+  alert("Envase registrado.");
+  carregarProducao(true);
+  carregarInicio(true);
 }
 
 async function carregarEstoque(force=false) {
@@ -256,7 +623,7 @@ function renderEstoqueCervejas(rows) {
 
   lista.forEach(r => {
     box.insertAdjacentHTML("beforeend", `
-      <div class="item">
+      <div class="item searchable">
         <div>
           <strong>${escapeHtml(r.cerveja_nome)}</strong>
           <div class="sub">${r.origens.length ? escapeHtml(r.origens.join(" • ")) : "Sem estoque"}</div>
@@ -289,7 +656,7 @@ function renderEstoqueInsumos(rows) {
     }
     lista.forEach(r => {
       box.insertAdjacentHTML("beforeend", `
-        <div class="item">
+        <div class="item searchable">
           <div>
             <strong>${escapeHtml(r.nome)}</strong>
             <div class="sub">${escapeHtml(r.tipo)} • ${escapeHtml(r.unidade)}</div>
@@ -299,6 +666,178 @@ function renderEstoqueInsumos(rows) {
       `);
     });
   });
+}
+
+async function somarEstoqueCerveja(cerveja_nome, origem, q10,q20,q30,q50, observacao="") {
+  const { data: rows, error } = await sb.from("estoque_cerveja")
+    .select("*")
+    .eq("cerveja_nome", cerveja_nome)
+    .eq("origem", origem)
+    .limit(1);
+
+  if (error) return error;
+
+  const atual = rows && rows[0] ? rows[0] : null;
+  const nq10 = Number(atual?.q10 || 0) + Number(q10 || 0);
+  const nq20 = Number(atual?.q20 || 0) + Number(q20 || 0);
+  const nq30 = Number(atual?.q30 || 0) + Number(q30 || 0);
+  const nq50 = Number(atual?.q50 || 0) + Number(q50 || 0);
+  const litros = litrosBarris(nq10,nq20,nq30,nq50);
+  const cerveja = state.cervejas.find(c => c.nome === cerveja_nome);
+
+  const payload = {
+    cerveja_id: cerveja ? cerveja.id : null,
+    cerveja_nome,
+    origem,
+    q10:nq10,
+    q20:nq20,
+    q30:nq30,
+    q50:nq50,
+    litros,
+    atualizado_em: new Date().toISOString()
+  };
+
+  const up = await sb.from("estoque_cerveja").upsert(payload, { onConflict:"cerveja_nome,origem" });
+  if (up.error) return up.error;
+
+  await sb.from("movimentacoes").insert({
+    tipo:"ENTRADA ESTOQUE",
+    categoria:"CERVEJA",
+    item_nome: cerveja_nome,
+    quantidade: litrosBarris(q10,q20,q30,q50),
+    unidade:"L",
+    origem,
+    observacao
+  });
+
+  return null;
+}
+
+async function salvarEntradaCerveja() {
+  mostrarErro("entradaCervejaErro", "");
+  const cerveja = document.getElementById("entradaCerveja").value;
+  const origem = document.getElementById("entradaOrigem").value;
+  const q10 = Number(document.getElementById("entradaQ10").value || 0);
+  const q20 = Number(document.getElementById("entradaQ20").value || 0);
+  const q30 = Number(document.getElementById("entradaQ30").value || 0);
+  const q50 = Number(document.getElementById("entradaQ50").value || 0);
+  const obs = document.getElementById("entradaObs").value.trim();
+
+  if (!cerveja || somaBarris(q10,q20,q30,q50) <= 0) {
+    mostrarErro("entradaCervejaErro", "Selecione a cerveja e informe os barris.");
+    return;
+  }
+
+  const erro = await somarEstoqueCerveja(cerveja, origem, q10,q20,q30,q50, obs);
+  if (erro) {
+    mostrarErro("entradaCervejaErro", erro.message);
+    return;
+  }
+
+  if (origem === "PHENOMENA") {
+    await sb.from("phenomena_entradas").insert({
+      cerveja_nome: cerveja,
+      q10,q20,q30,q50,
+      litros: litrosBarris(q10,q20,q30,q50),
+      observacao: obs
+    });
+  }
+
+  ["entradaQ10","entradaQ20","entradaQ30","entradaQ50","entradaObs"].forEach(id => document.getElementById(id).value = id === "entradaObs" ? "" : "0");
+  invalidar("estoque","inicio");
+  alert("Entrada de cerveja registrada.");
+  carregarEstoque(true);
+  carregarInicio(true);
+}
+
+function popularEntradaInsumos() {
+  const tipo = document.getElementById("entradaInsumoTipo").value;
+  const sel = document.getElementById("entradaInsumoNome");
+  sel.innerHTML = '<option value="">Selecionar insumo...</option>';
+  state.insumos.filter(i => i.tipo === tipo).forEach(i => {
+    const op = document.createElement("option");
+    op.value = i.nome;
+    op.textContent = `${i.nome} (${i.unidade})`;
+    op.dataset.unidade = i.unidade;
+    op.dataset.fornecedor = i.fornecedor_padrao || "";
+    sel.appendChild(op);
+  });
+  sel.onchange = () => {
+    const op = sel.options[sel.selectedIndex];
+    if (op) document.getElementById("entradaInsumoFornecedor").value = op.dataset.fornecedor || "";
+  };
+}
+
+async function salvarEntradaInsumo() {
+  mostrarErro("entradaInsumoErro", "");
+  const tipo = document.getElementById("entradaInsumoTipo").value;
+  const nome = document.getElementById("entradaInsumoNome").value;
+  const quantidade = Number(document.getElementById("entradaInsumoQtd").value || 0);
+  const fornecedor = document.getElementById("entradaInsumoFornecedor").value.trim();
+  const valor_total = Number(document.getElementById("entradaInsumoValor").value || 0);
+  const validade = document.getElementById("entradaInsumoValidade").value || null;
+  const lote_fornecedor = document.getElementById("entradaInsumoLote").value.trim();
+  const observacao = document.getElementById("entradaInsumoObs").value.trim();
+
+  if (!nome || quantidade <= 0) {
+    mostrarErro("entradaInsumoErro", "Selecione o insumo e informe a quantidade.");
+    return;
+  }
+
+  const insumo = state.insumos.find(i => i.tipo === tipo && i.nome === nome);
+  const unidade = insumo ? insumo.unidade : unidadePadrao(tipo);
+
+  const { data: rows } = await sb.from("estoque_insumos")
+    .select("*")
+    .eq("tipo", tipo)
+    .eq("nome", nome)
+    .limit(1);
+
+  const atual = rows && rows[0] ? rows[0] : null;
+  const novaQtd = Number(atual?.quantidade || 0) + quantidade;
+
+  const up = await sb.from("estoque_insumos").upsert({
+    insumo_id: insumo ? insumo.id : null,
+    tipo,
+    nome,
+    unidade,
+    quantidade: novaQtd,
+    atualizado_em: new Date().toISOString()
+  }, { onConflict:"tipo,nome" });
+
+  if (up.error) {
+    mostrarErro("entradaInsumoErro", up.error.message);
+    return;
+  }
+
+  await sb.from("entradas_insumos").insert({
+    insumo_id: insumo ? insumo.id : null,
+    tipo,
+    nome,
+    unidade,
+    quantidade,
+    fornecedor,
+    valor_total,
+    validade,
+    lote_fornecedor,
+    observacao
+  });
+
+  await sb.from("movimentacoes").insert({
+    tipo:"ENTRADA INSUMO",
+    categoria:"INSUMO",
+    item_nome:nome,
+    quantidade,
+    unidade,
+    origem:"COMPRA",
+    observacao
+  });
+
+  ["entradaInsumoQtd","entradaInsumoValor","entradaInsumoValidade","entradaInsumoLote","entradaInsumoObs"].forEach(id => document.getElementById(id).value = "");
+  invalidar("estoque","inicio");
+  alert("Compra de insumo registrada.");
+  carregarEstoque(true);
+  carregarInicio(true);
 }
 
 function mostrarSubEstoque(tipo) {
@@ -325,7 +864,7 @@ async function carregarSaidas(force=false) {
   box.innerHTML = (data || []).length ? "" : '<div class="item"><span class="sub">Nenhuma saída registrada.</span></div>';
   (data || []).forEach(s => {
     box.insertAdjacentHTML("beforeend", `
-      <div class="item">
+      <div class="item searchable">
         <div>
           <strong>${escapeHtml(s.cliente_nome)}</strong>
           <div class="sub">${escapeHtml(s.cerveja_nome)} • ${fmt(s.litros)} L</div>
@@ -347,7 +886,7 @@ async function carregarClientes(force=false) {
 
   state.clientes.forEach(c => {
     box.insertAdjacentHTML("beforeend", `
-      <div class="item">
+      <div class="item searchable">
         <div>
           <strong>${escapeHtml(c.nome)}</strong>
           <div class="sub">${escapeHtml(c.estabelecimento || "-")} • ${escapeHtml(c.cidade || "-")}</div>
@@ -382,9 +921,7 @@ async function salvarCliente() {
   }
 
   ["cliNome","cliEstabelecimento","cliCidade","cliContato","cliObs"].forEach(id => document.getElementById(id).value = "");
-  state.loaded.baseCadastros = false;
-  state.loaded.clientes = false;
-  state.loaded.inicio = false;
+  invalidar("baseCadastros","clientes","inicio","saidas");
   alert("Cliente salvo.");
   carregarClientes(true);
 }
@@ -442,16 +979,15 @@ async function salvarCerveja() {
   }
 
   ["cadCervejaNome","cadCervejaEstilo","cadCervejaMarca"].forEach(id => document.getElementById(id).value = "");
-  state.loaded.baseCadastros = false;
-  state.loaded.cadastros = false;
-  state.loaded.estoque = false;
+  invalidar("baseCadastros","cadastros","estoque","producao","inicio");
   alert("Cerveja salva.");
+  await carregarBaseCadastros(true);
   carregarCadastros(true);
 }
 
 function ajustarUnidade() {
   const tipo = document.getElementById("cadInsumoTipo").value;
-  document.getElementById("cadInsumoUnidade").value = tipo === "MALTE" ? "KG" : tipo === "LUPULO" ? "G" : "UN";
+  document.getElementById("cadInsumoUnidade").value = unidadePadrao(tipo);
 }
 
 async function salvarInsumo() {
@@ -478,11 +1014,18 @@ async function salvarInsumo() {
   }
 
   ["cadInsumoNome","cadInsumoFornecedor","cadInsumoMinimo"].forEach(id => document.getElementById(id).value = "");
-  state.loaded.baseCadastros = false;
-  state.loaded.cadastros = false;
-  state.loaded.estoque = false;
+  invalidar("baseCadastros","cadastros","estoque","producao","inicio");
   alert("Insumo salvo.");
+  await carregarBaseCadastros(true);
   carregarCadastros(true);
+}
+
+function filtrarLista(containerId, texto) {
+  const q = String(texto || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  document.querySelectorAll(`#${containerId} .searchable`).forEach(el => {
+    const hay = el.innerText.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    el.setAttribute("hidden-by-filter", q && !hay.includes(q) ? "true" : "false");
+  });
 }
 
 function escapeHtml(v) {
