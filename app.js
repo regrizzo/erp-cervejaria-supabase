@@ -1,5 +1,5 @@
 
-const APP_BUILD = "v19dash-cachefix-20260714";
+const APP_BUILD = "dashboard-estavel";
 
 // Evita o celular/PWA segurar arquivos antigos do app.
 (function limparCacheAntigo() {
@@ -3110,7 +3110,7 @@ async function gerarBackupJson() {
 
   const backup = {
     gerado_em: new Date().toISOString(),
-    projeto: "ERP Cervejaria Supabase",
+    projeto: "ERP Cervejaria sistema",
     tabelas: {}
   };
 

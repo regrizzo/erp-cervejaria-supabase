@@ -3,16 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <title>ERP Cervejaria Supabase</title>
+  <title>ERP Cervejaria</title>
 
-  <link rel="manifest" href="./manifest.json?v=v19dash-cachefix-20260714" />
+  <link rel="manifest" href="./manifest.json?v=dash-cachefix-20260714" />
   <link rel="icon" type="image/png" href="https://regrizzo.github.io/erp-cervejaria-icons/icon-192.png" />
   <link rel="apple-touch-icon" href="https://regrizzo.github.io/erp-cervejaria-icons/apple-touch-icon-180.png" />
   <meta name="theme-color" content="#0c2949" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
 
-  <link rel="stylesheet" href="./styles.css?v=v19dash-cachefix-20260714" />
+  <link rel="stylesheet" href="./styles.css?v=dash-cachefix-20260714" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
@@ -21,7 +21,7 @@
     <div class="loginCard">
       <img class="logo" src="https://regrizzo.github.io/erp-cervejaria-icons/icon-192.png" alt="ERP Cervejaria">
       <h1>ERP Cervejaria</h1>
-      <p>Versão Apps Script V19 convertida para Supabase</p>
+      <p>Painel de controle e gestão de estoque</p>
 
       <label>E-mail</label>
       <input id="loginEmail" type="email" placeholder="seu@email.com">
@@ -31,7 +31,7 @@
 
       <button onclick="login()">Entrar</button>
       <div id="loginErro" class="erro"></div>
-      <small>Use o usuário criado em Supabase &gt; Authentication &gt; Users.</small>
+      <small>Use o usuário cadastrado para acessar o sistema.</small>
     </div>
   </div>
 
@@ -39,7 +39,7 @@
     <header class="topbar">
       <div>
         <div class="appTitle">ERP Cervejaria</div>
-        <div class="appSub">Supabase • V19 Dashboard completo • Phenomena alien</div>
+        <div class="appSub">Painel de controle e gestão de estoque</div>
       </div>
       <button class="btnGhost" onclick="logout()">Sair</button>
     </header>
@@ -685,7 +685,7 @@
         </div>
 
         <div class="box">
-          <p class="muted">Gera um arquivo JSON com os principais dados do Supabase e baixa no seu celular/computador.</p>
+          <p class="muted">Gera um arquivo JSON com os principais dados do ERP e baixa no seu celular/computador.</p>
           <button onclick="gerarBackupJson()">💾 Gerar backup JSON</button>
           <div id="backupStatus" class="muted" style="margin-top:10px;"></div>
         </div>
@@ -890,6 +890,6 @@
     </nav>
   </div>
 
-  <script src="./app.js?v=v19dash-cachefix-20260714"></script>
+  <script src="./app.js?v=dash-cachefix-20260714"></script>
 </body>
 </html>
