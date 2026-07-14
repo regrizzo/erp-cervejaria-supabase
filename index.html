@@ -39,7 +39,7 @@
     <header class="topbar">
       <div>
         <div class="appTitle">ERP Cervejaria</div>
-        <div class="appSub">Supabase • V19 Dashboard completo • cachefix</div>
+        <div class="appSub">Supabase • V19 Dashboard completo • fermentos em produção</div>
       </div>
       <button class="btnGhost" onclick="logout()">Sair</button>
     </header>
@@ -161,6 +161,7 @@
           <button class="btnMain" onclick="toggleForm('formProducao')">+ Nova Produção</button>
           <button class="btnSecondary" onclick="toggleForm('formDryHop')">🌿 Dry Hopping</button>
           <button class="btnSuccess" onclick="toggleForm('formEnvase')">🍺 Envase</button>
+          <button class="btnSecondary" onclick="mostrarTela('fermentos')">🧫 Fermentos</button>
         </div>
 
         <div id="formProducao" class="formBox" style="display:none;">
@@ -464,7 +465,6 @@
           <div class="maisCard" onclick="mostrarTela('clientes')"><strong>👥 Clientes</strong><span>Cadastro e consulta</span></div>
           <div class="maisCard" onclick="mostrarTela('cadastros')"><strong>🗂️ Cadastros</strong><span>Cervejas e insumos</span></div>
           <div class="maisCard" onclick="mostrarTela('lotes')"><strong>🧪 Lotes</strong><span>Ficha completa e histórico</span></div>
-          <div class="maisCard" onclick="mostrarTela('fermentos')"><strong>🧫 Fermentos</strong><span>Coleta, reuso e descarte</span></div>
           <div class="maisCard" onclick="mostrarTela('phenomena')"><strong>💰 Phenomena</strong><span>Entradas, estoque e retiradas</span></div>
           <div class="maisCard" onclick="mostrarTela('retornos')"><strong>↩️ Retornos</strong><span>Retorno de barris dos clientes</span></div>
           <div class="maisCard" onclick="mostrarTela('painelDia')"><strong>⚠️ Painel do dia</strong><span>Itens zerados e alertas</span></div>

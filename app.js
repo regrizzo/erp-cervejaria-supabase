@@ -104,7 +104,8 @@ function mostrarTela(nome) {
   if (nome === "producao") btns[1].classList.add("active");
   if (nome === "estoque") btns[2].classList.add("active");
   if (nome === "saidas") btns[3].classList.add("active");
-  if (["mais","clientes","cadastros","lotes","fermentos","phenomena","retornos","painelDia","relatorio","auditoria","configuracoes","backup"].includes(nome)) btns[4].classList.add("active");
+  if (nome === "fermentos") btns[1].classList.add("active");
+  if (["mais","clientes","cadastros","lotes","phenomena","retornos","painelDia","relatorio","auditoria","configuracoes","backup"].includes(nome)) btns[4].classList.add("active");
 
   if (nome === "inicio") carregarInicio();
   if (nome === "producao") carregarProducao();
