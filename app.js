@@ -323,6 +323,61 @@ function unidadePadrao(tipo) {
   return "UN";
 }
 
+
+async function validarEstoqueInsumosSuficiente(itens) {
+  const agregados = new Map();
+
+  itens.forEach(item => {
+    if (!item.nome || Number(item.quantidade || 0) <= 0) return;
+    const chave = item.tipo + "|" + item.nome;
+    const atual = agregados.get(chave) || {
+      tipo: item.tipo,
+      nome: item.nome,
+      unidade: item.unidade,
+      quantidade: 0
+    };
+    atual.quantidade += Number(item.quantidade || 0);
+    agregados.set(chave, atual);
+  });
+
+  const faltas = [];
+
+  for (const item of agregados.values()) {
+    const { data, error } = await sb.from("estoque_insumos")
+      .select("quantidade,unidade")
+      .eq("tipo", item.tipo)
+      .eq("nome", item.nome)
+      .limit(1);
+
+    if (error) throw error;
+
+    const disponivel = data && data[0] ? Number(data[0].quantidade || 0) : 0;
+    const unidade = data && data[0] ? data[0].unidade : item.unidade;
+
+    if (disponivel < item.quantidade) {
+      faltas.push({
+        nome: item.nome,
+        tipo: item.tipo,
+        unidade: unidade,
+        disponivel: disponivel,
+        necessario: item.quantidade,
+        falta: item.quantidade - disponivel
+      });
+    }
+  }
+
+  if (faltas.length) {
+    const detalhes = faltas.map(f =>
+      `${f.nome}: necessário ${fmt(f.necessario, 3)} ${f.unidade}, disponível ${fmt(f.disponivel, 3)} ${f.unidade}, falta ${fmt(f.falta, 3)} ${f.unidade}`
+    ).join("\n");
+
+    throw new Error("Estoque insuficiente de insumos:\n" + detalhes);
+  }
+
+  return true;
+}
+
+
 async function baixarInsumo(tipo, nome, quantidade, unidade, observacao, lote="", etapa="PRODUCAO") {
   if (!nome || quantidade <= 0) return;
 
@@ -336,6 +391,11 @@ async function baixarInsumo(tipo, nome, quantidade, unidade, observacao, lote=""
 
   const atual = atualRows && atualRows[0] ? atualRows[0] : null;
   const qtdAtual = Number(atual ? atual.quantidade : 0);
+
+  if (qtdAtual < Number(quantidade)) {
+    throw new Error(`${nome}: estoque insuficiente. Disponível ${fmt(qtdAtual, 3)} ${unidade}, necessário ${fmt(Number(quantidade), 3)} ${unidade}.`);
+  }
+
   const novaQtd = qtdAtual - Number(quantidade);
 
   const insumo = state.insumos.find(i => i.tipo === tipo && i.nome === nome);
@@ -382,6 +442,22 @@ async function salvarProducao() {
 
   const cerveja = state.cervejas.find(c => c.nome === cerveja_nome);
 
+  const insumosParaValidar = [...maltes, ...lupulos];
+  if (fermentoNome && fermentoQtd > 0) insumosParaValidar.push({
+    tipo:"FERMENTO",
+    nome:fermentoNome,
+    quantidade:fermentoQtd,
+    unidade:fermento ? fermento.unidade : "UN",
+    insumo_id: fermento ? fermento.id : null
+  });
+
+  try {
+    await validarEstoqueInsumosSuficiente(insumosParaValidar);
+  } catch(e) {
+    mostrarErro("prodErro", e.message);
+    return;
+  }
+
   const { data: prod, error } = await sb.from("producoes").insert({
     lote,
     cerveja_nome,
@@ -399,14 +475,7 @@ async function salvarProducao() {
   }
 
   try {
-    const insumos = [...maltes, ...lupulos];
-    if (fermentoNome && fermentoQtd > 0) insumos.push({
-      tipo:"FERMENTO",
-      nome:fermentoNome,
-      quantidade:fermentoQtd,
-      unidade:fermento ? fermento.unidade : "UN",
-      insumo_id: fermento ? fermento.id : null
-    });
+    const insumos = insumosParaValidar;
 
     for (const item of insumos) {
       await sb.from("producao_insumos").insert({
@@ -457,6 +526,13 @@ async function salvarDryHop() {
   const prod = state.producoesFermentando.find(p => p.lote === lote);
   if (!prod) {
     mostrarErro("dryErro", "Lote não encontrado.");
+    return;
+  }
+
+  try {
+    await validarEstoqueInsumosSuficiente(itens);
+  } catch(e) {
+    mostrarErro("dryErro", e.message);
     return;
   }
 
