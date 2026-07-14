@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>ERP Cervejaria Supabase</title>
+
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" type="image/png" href="https://regrizzo.github.io/erp-cervejaria-icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="https://regrizzo.github.io/erp-cervejaria-icons/apple-touch-icon-180.png" />
+  <meta name="theme-color" content="#0c2949" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body>
+  <div id="loginScreen" class="loginScreen">
+    <div class="loginCard">
+      <img class="logo" src="https://regrizzo.github.io/erp-cervejaria-icons/icon-192.png" alt="ERP Cervejaria">
+      <h1>ERP Cervejaria</h1>
+      <p>App conectado ao Supabase</p>
+
+      <label>E-mail</label>
+      <input id="loginEmail" type="email" placeholder="seu@email.com">
+
+      <label>Senha</label>
+      <input id="loginSenha" type="password" placeholder="senha">
+
+      <button onclick="login()">Entrar</button>
+      <div id="loginErro" class="erro"></div>
+      <small>Crie o usuário no Supabase em Authentication &gt; Users.</small>
+    </div>
+  </div>
+
+  <div id="app" class="app" style="display:none;">
+    <header class="topbar">
+      <div>
+        <div class="appTitle">ERP Cervejaria</div>
+        <div class="appSub">Supabase • versão inicial</div>
+      </div>
+      <button class="btnGhost" onclick="logout()">Sair</button>
+    </header>
+
+    <main>
+      <section id="telaInicio" class="tela active">
+        <div class="sectionHeader">
+          <h2>Início</h2>
+          <button class="btnSmall" onclick="carregarInicio(true)">Atualizar</button>
+        </div>
+
+        <div class="gridCards">
+          <div class="card"><span>🍺 Estoque cerveja</span><strong id="cardEstoqueCerveja">0 L</strong></div>
+          <div class="card"><span>🧪 Lotes fermentando</span><strong id="cardFermentando">0</strong></div>
+          <div class="card"><span>🌾 Malte</span><strong id="cardMalte">0 KG</strong></div>
+          <div class="card"><span>🌿 Lúpulo</span><strong id="cardLupulo">0 G</strong></div>
+          <div class="card"><span>🧫 Fermento</span><strong id="cardFermento">0 UN</strong></div>
+          <div class="card"><span>👥 Clientes</span><strong id="cardClientes">0</strong></div>
+        </div>
+
+        <div class="box">
+          <h3>Resumo rápido</h3>
+          <div id="resumoInicio" class="muted">Carregando...</div>
+        </div>
+      </section>
+
+      <section id="telaProducao" class="tela">
+        <div class="sectionHeader">
+          <h2>Produção</h2>
+          <button class="btnSmall" onclick="carregarProducao(true)">Atualizar</button>
+        </div>
+
+        <button class="btnMain" onclick="toggleForm('formProducao')">+ Nova Produção</button>
+
+        <div id="formProducao" class="formBox" style="display:none;">
+          <label>Lote</label>
+          <input id="prodLote" placeholder="Ex: LOT26001">
+
+          <label>Cerveja</label>
+          <select id="prodCerveja"></select>
+
+          <label>Litros produzidos</label>
+          <input id="prodLitros" type="number" min="0" step="0.01">
+
+          <label>Observação</label>
+          <textarea id="prodObs"></textarea>
+
+          <button onclick="salvarProducao()">Salvar produção</button>
+          <div id="prodErro" class="erro"></div>
+        </div>
+
+        <h3>Cervejas em produção</h3>
+        <div id="listaProducoes" class="lista"></div>
+      </section>
+
+      <section id="telaEstoque" class="tela">
+        <div class="sectionHeader">
+          <h2>Estoque</h2>
+          <button class="btnSmall" onclick="carregarEstoque(true)">Atualizar</button>
+        </div>
+
+        <div class="tabs">
+          <button class="tab active" onclick="mostrarSubEstoque('cervejas')">Cervejas</button>
+          <button class="tab" onclick="mostrarSubEstoque('insumos')">Insumos</button>
+        </div>
+
+        <div id="subEstoqueCervejas">
+          <h3>Cervejas</h3>
+          <div id="estoqueCervejas" class="lista"></div>
+        </div>
+
+        <div id="subEstoqueInsumos" style="display:none;">
+          <h3>Insumos</h3>
+          <div id="estoqueInsumos" class="lista"></div>
+        </div>
+      </section>
+
+      <section id="telaSaidas" class="tela">
+        <div class="sectionHeader">
+          <h2>Saídas</h2>
+          <button class="btnSmall" onclick="carregarSaidas(true)">Atualizar</button>
+        </div>
+
+        <div class="box">
+          <p class="muted">Nesta versão inicial Supabase, a tela de saída está em modo consulta. A gravação completa da saída múltipla será migrada na próxima etapa.</p>
+        </div>
+
+        <h3>Últimas saídas</h3>
+        <div id="listaSaidas" class="lista"></div>
+      </section>
+
+      <section id="telaMais" class="tela">
+        <h2>Mais</h2>
+
+        <div class="maisGrid">
+          <div class="maisCard" onclick="mostrarTela('clientes')"><strong>👥 Clientes</strong><span>Cadastro e consulta</span></div>
+          <div class="maisCard" onclick="mostrarTela('cadastros')"><strong>🗂️ Cadastros</strong><span>Cervejas e insumos</span></div>
+        </div>
+      </section>
+
+      <section id="telaClientes" class="tela">
+        <div class="sectionHeader">
+          <h2>Clientes</h2>
+          <button class="btnSmall" onclick="carregarClientes(true)">Atualizar</button>
+        </div>
+
+        <button class="btnMain" onclick="toggleForm('formCliente')">+ Novo Cliente</button>
+
+        <div id="formCliente" class="formBox" style="display:none;">
+          <label>Nome / Razão social</label>
+          <input id="cliNome">
+
+          <label>Estabelecimento</label>
+          <input id="cliEstabelecimento">
+
+          <label>Cidade</label>
+          <input id="cliCidade">
+
+          <label>Contato</label>
+          <input id="cliContato">
+
+          <label>Observação</label>
+          <textarea id="cliObs"></textarea>
+
+          <button onclick="salvarCliente()">Salvar cliente</button>
+          <div id="cliErro" class="erro"></div>
+        </div>
+
+        <div id="listaClientes" class="lista"></div>
+      </section>
+
+      <section id="telaCadastros" class="tela">
+        <div class="sectionHeader">
+          <h2>Cadastros</h2>
+          <button class="btnSmall" onclick="carregarCadastros(true)">Atualizar</button>
+        </div>
+
+        <button class="btnMain" onclick="toggleForm('formCerveja')">+ Cerveja</button>
+        <button class="btnSecondary" onclick="toggleForm('formInsumo')">+ Insumo</button>
+
+        <div id="formCerveja" class="formBox" style="display:none;">
+          <label>Nome da cerveja</label>
+          <input id="cadCervejaNome">
+          <label>Estilo</label>
+          <input id="cadCervejaEstilo">
+          <label>Marca</label>
+          <input id="cadCervejaMarca">
+          <button onclick="salvarCerveja()">Salvar cerveja</button>
+          <div id="cadCervejaErro" class="erro"></div>
+        </div>
+
+        <div id="formInsumo" class="formBox" style="display:none;">
+          <label>Tipo</label>
+          <select id="cadInsumoTipo" onchange="ajustarUnidade()">
+            <option value="MALTE">Malte</option>
+            <option value="LUPULO">Lúpulo</option>
+            <option value="FERMENTO">Fermento</option>
+          </select>
+          <label>Nome</label>
+          <input id="cadInsumoNome">
+          <label>Unidade</label>
+          <select id="cadInsumoUnidade">
+            <option>KG</option>
+            <option>G</option>
+            <option>UN</option>
+          </select>
+          <label>Fornecedor padrão</label>
+          <input id="cadInsumoFornecedor">
+          <label>Estoque mínimo</label>
+          <input id="cadInsumoMinimo" type="number" min="0" step="0.001">
+          <button onclick="salvarInsumo()">Salvar insumo</button>
+          <div id="cadInsumoErro" class="erro"></div>
+        </div>
+
+        <h3>Cervejas</h3>
+        <div id="listaCervejas" class="lista"></div>
+
+        <h3>Insumos</h3>
+        <div id="listaInsumos" class="lista"></div>
+      </section>
+    </main>
+
+    <nav class="bottomNav">
+      <button class="active" onclick="mostrarTela('inicio')">🏠<span>Início</span></button>
+      <button onclick="mostrarTela('producao')">🧪<span>Produção</span></button>
+      <button onclick="mostrarTela('estoque')">📦<span>Estoque</span></button>
+      <button onclick="mostrarTela('saidas')">🚚<span>Saídas</span></button>
+      <button onclick="mostrarTela('mais')">☰<span>Mais</span></button>
+    </nav>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
