@@ -1,5 +1,5 @@
 
-const APP_BUILD = "lotes-por-cerveja-20260714";
+const APP_BUILD = "updates-saidas-retornos-clientes-phenomena-20260714";
 
 // Evita o celular/PWA segurar arquivos antigos do app.
 (function limparCacheAntigo() {
@@ -3618,3 +3618,836 @@ function dataBR(v) {
   const [a,m,d] = String(v).split("-");
   return `${d}/${m}/${a}`;
 }
+
+
+
+/* ==========================================================
+   UPDATES: SAÍDAS, RETORNOS, CLIENTES E PHENOMENA
+   ========================================================== */
+
+function csvEscape(v) {
+  return `"${String(v ?? "").replaceAll('"','""')}"`;
+}
+
+function baixarCsvErp(nome, linhas) {
+  const csv = linhas.map(row => row.map(csvEscape).join(";")).join("\n");
+  const blob = new Blob([csv], { type:"text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nome;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function dataParaOrdenacao(v) {
+  if (!v) return 0;
+  const d = new Date(String(v).includes("T") ? v : String(v) + "T00:00:00");
+  return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+function dataInputFimParaIso(data) {
+  if (!data) return null;
+  const d = new Date(data + "T00:00:00");
+  d.setDate(d.getDate() + 1);
+  return d.toISOString();
+}
+
+function getPeriodoInputs(prefixo) {
+  const de = document.getElementById(prefixo + "De")?.value || "";
+  const ate = document.getElementById(prefixo + "Ate")?.value || "";
+  return { de, ate, ateIso: dataInputFimParaIso(ate) };
+}
+
+function agruparSaidas(rows) {
+  const mapa = new Map();
+  (rows || []).forEach(s => {
+    const key = s.grupo_saida || s.id;
+    if (!mapa.has(key)) {
+      mapa.set(key, {
+        grupo_saida:key,
+        cliente_id:s.cliente_id,
+        cliente_nome:s.cliente_nome,
+        data_saida:s.data_saida,
+        criado_em:s.criado_em,
+        responsavel:s.responsavel || "",
+        observacao:s.observacao || "",
+        itens:[],
+        litros:0,
+        q10:0,q20:0,q30:0,q50:0,
+        codigos:[],
+        origem:[]
+      });
+    }
+
+    const g = mapa.get(key);
+    g.itens.push(s);
+    g.litros += Number(s.litros || 0);
+    g.q10 += Number(s.q10 || 0);
+    g.q20 += Number(s.q20 || 0);
+    g.q30 += Number(s.q30 || 0);
+    g.q50 += Number(s.q50 || 0);
+    if (s.codigos_barris) g.codigos.push(s.codigos_barris);
+    if (s.origem_baixada) g.origem.push(`${s.cerveja_nome}: ${s.origem_baixada}`);
+    if (dataParaOrdenacao(s.criado_em) > dataParaOrdenacao(g.criado_em)) g.criado_em = s.criado_em;
+  });
+
+  return [...mapa.values()].sort((a,b) => dataParaOrdenacao(b.criado_em || b.data_saida) - dataParaOrdenacao(a.criado_em || a.data_saida));
+}
+
+async function carregarSaidas(force=false) {
+  if (state.loaded.saidas && !force) return;
+
+  const { data, error } = await sb.from("saidas")
+    .select("*")
+    .order("criado_em", { ascending:false })
+    .limit(350);
+
+  const box = document.getElementById("listaSaidas");
+  const resumoBox = document.getElementById("saidasResumo");
+
+  if (error) {
+    if (box) box.innerHTML = '<div class="item">Erro ao carregar saídas.</div>';
+    return;
+  }
+
+  const rows = data || [];
+  const grupos = agruparSaidas(rows);
+  state.saidasAgrupadas = grupos;
+  state.saidasRows = rows;
+
+  const litros = rows.reduce((s,r) => s + Number(r.litros || 0), 0);
+  const barris = rows.reduce((s,r) => s + somaBarris(r.q10,r.q20,r.q30,r.q50), 0);
+  const clientes = new Set(rows.map(r => r.cliente_nome).filter(Boolean)).size;
+
+  if (resumoBox) {
+    resumoBox.innerHTML = `
+      <div class="card"><span>Fichas de saída</span><strong>${grupos.length}</strong></div>
+      <div class="card"><span>Litros enviados</span><strong>${fmt(litros)} L</strong></div>
+      <div class="card"><span>Barris enviados</span><strong>${barris}</strong></div>
+      <div class="card"><span>Clientes atendidos</span><strong>${clientes}</strong></div>
+    `;
+  }
+
+  if (!box) return;
+  box.innerHTML = grupos.length ? "" : '<div class="item"><span class="sub">Nenhuma saída registrada.</span></div>';
+
+  grupos.forEach(g => {
+    const itensHtml = g.itens.map(i =>
+      `${escapeHtml(i.cerveja_nome)}: ${fmt(i.litros)} L • 10L=${i.q10||0} • 20L=${i.q20||0} • 30L=${i.q30||0} • 50L=${i.q50||0}`
+    ).join("<br>");
+
+    const origemHtml = g.origem.length ? `<div class="sub">Baixa: ${escapeHtml(g.origem.join(" | "))}</div>` : "";
+    const codigosHtml = g.codigos.length ? `<div class="sub">Códigos: ${escapeHtml(g.codigos.join(" | "))}</div>` : "";
+
+    box.insertAdjacentHTML("beforeend", `
+      <div class="item searchable itemDestaque">
+        <div>
+          <strong>${escapeHtml(g.cliente_nome)}</strong>
+          <div class="sub">${dataBR(g.data_saida)} • ${g.itens.length} item(ns) • ${escapeHtml(g.responsavel || "")}</div>
+          <div class="miniSection"><strong>Itens enviados</strong><div class="sub">${itensHtml}</div></div>
+          ${origemHtml}
+          ${codigosHtml}
+          <div class="sub">${escapeHtml(g.observacao || "")}</div>
+        </div>
+        <span class="badge">${fmt(g.litros)} L</span>
+      </div>
+    `);
+  });
+
+  state.loaded.saidas = true;
+}
+
+function exportarSaidasCsv() {
+  const rows = state.saidasRows || [];
+  if (!rows.length) {
+    alert("Carregue as saídas antes de exportar.");
+    return;
+  }
+
+  const linhas = [
+    ["Data","Grupo","Cliente","Cerveja","10L","20L","30L","50L","Litros","Origem baixada","Códigos","Responsável","Observação"]
+  ];
+
+  rows.forEach(s => linhas.push([
+    s.data_saida,
+    s.grupo_saida || s.id,
+    s.cliente_nome,
+    s.cerveja_nome,
+    s.q10 || 0,
+    s.q20 || 0,
+    s.q30 || 0,
+    s.q50 || 0,
+    s.litros || 0,
+    s.origem_baixada || "",
+    s.codigos_barris || "",
+    s.responsavel || "",
+    s.observacao || ""
+  ]));
+
+  baixarCsvErp("saidas-erp-cervejaria.csv", linhas);
+}
+
+function calcularAbertoDetalhado(saidasRows, retornosRows, clienteId="", clienteNome="") {
+  const filtroSaida = (s) => clienteId ? s.cliente_id === clienteId : s.cliente_nome === clienteNome;
+  const filtroRetorno = (r) => clienteId ? r.cliente_id === clienteId : r.cliente_nome === clienteNome;
+
+  const saidas = (saidasRows || []).filter(filtroSaida);
+  const retornos = (retornosRows || []).filter(filtroRetorno);
+
+  const out = {
+    q10: Math.max(0, saidas.reduce((s,r)=>s+Number(r.q10||0),0) - retornos.reduce((s,r)=>s+Number(r.q10||0),0)),
+    q20: Math.max(0, saidas.reduce((s,r)=>s+Number(r.q20||0),0) - retornos.reduce((s,r)=>s+Number(r.q20||0),0)),
+    q30: Math.max(0, saidas.reduce((s,r)=>s+Number(r.q30||0),0) - retornos.reduce((s,r)=>s+Number(r.q30||0),0)),
+    q50: Math.max(0, saidas.reduce((s,r)=>s+Number(r.q50||0),0) - retornos.reduce((s,r)=>s+Number(r.q50||0),0)),
+    litrosSaidos: saidas.reduce((s,r)=>s+Number(r.litros||0),0),
+    barrisSaidos: saidas.reduce((s,r)=>s+somaBarris(r.q10,r.q20,r.q30,r.q50),0),
+    barrisRetornados: retornos.reduce((s,r)=>s+somaBarris(r.q10,r.q20,r.q30,r.q50),0)
+  };
+  out.aberto = Math.max(0, out.q10 + out.q20 + out.q30 + out.q50);
+  return out;
+}
+
+function agruparAbertosPorCliente(saidasRows, retornosRows) {
+  const mapa = new Map();
+
+  (saidasRows || []).forEach(s => {
+    const key = s.cliente_id || s.cliente_nome;
+    if (!mapa.has(key)) mapa.set(key, { cliente_id:s.cliente_id, cliente:s.cliente_nome, q10:0,q20:0,q30:0,q50:0, saidas:0, retornos:0, litros:0, dataMaisAntiga:s.data_saida });
+    const c = mapa.get(key);
+    c.q10 += Number(s.q10 || 0);
+    c.q20 += Number(s.q20 || 0);
+    c.q30 += Number(s.q30 || 0);
+    c.q50 += Number(s.q50 || 0);
+    c.saidas += somaBarris(s.q10,s.q20,s.q30,s.q50);
+    c.litros += Number(s.litros || 0);
+    if (s.data_saida && (!c.dataMaisAntiga || s.data_saida < c.dataMaisAntiga)) c.dataMaisAntiga = s.data_saida;
+  });
+
+  (retornosRows || []).forEach(r => {
+    const key = r.cliente_id || r.cliente_nome;
+    if (!mapa.has(key)) mapa.set(key, { cliente_id:r.cliente_id, cliente:r.cliente_nome, q10:0,q20:0,q30:0,q50:0, saidas:0, retornos:0, litros:0, dataMaisAntiga:null });
+    const c = mapa.get(key);
+    c.q10 -= Number(r.q10 || 0);
+    c.q20 -= Number(r.q20 || 0);
+    c.q30 -= Number(r.q30 || 0);
+    c.q50 -= Number(r.q50 || 0);
+    c.retornos += somaBarris(r.q10,r.q20,r.q30,r.q50);
+  });
+
+  return [...mapa.values()].map(c => ({
+    ...c,
+    q10: Math.max(0,c.q10),
+    q20: Math.max(0,c.q20),
+    q30: Math.max(0,c.q30),
+    q50: Math.max(0,c.q50),
+    aberto: Math.max(0,c.q10) + Math.max(0,c.q20) + Math.max(0,c.q30) + Math.max(0,c.q50)
+  })).filter(c => c.aberto > 0).sort((a,b) => b.aberto - a.aberto);
+}
+
+async function prepararFormRetorno() {
+  await carregarBaseCadastros();
+  prepararSelectClientes("retornoCliente");
+  prepararSelectCervejas("retornoCerveja");
+
+  const sel = document.getElementById("retornoCliente");
+  if (sel) sel.onchange = atualizarResumoRetornoCliente;
+
+  atualizarResumoRetornoCliente();
+}
+
+async function atualizarResumoRetornoCliente() {
+  const sel = document.getElementById("retornoCliente");
+  const box = document.getElementById("retornoResumoCliente");
+  if (!sel || !box || !sel.value) {
+    if (box) box.innerText = "Selecione um cliente para ver os barris em aberto.";
+    return;
+  }
+
+  const op = sel.options[sel.selectedIndex];
+  const clienteId = sel.value;
+  const clienteNome = op ? (op.dataset.nome || op.textContent) : "";
+
+  const [saidas, retornos] = await Promise.all([
+    sb.from("saidas").select("*").eq("cliente_id", clienteId),
+    sb.from("retornos").select("*").eq("cliente_id", clienteId)
+  ]);
+
+  const aberto = calcularAbertoDetalhado(saidas.data || [], retornos.data || [], clienteId, clienteNome);
+  box.innerText = `Em aberto: ${aberto.aberto} barril(is) • 10L=${aberto.q10} • 20L=${aberto.q20} • 30L=${aberto.q30} • 50L=${aberto.q50}`;
+  state.retornoAbertoAtual = aberto;
+}
+
+function preencherRetornoAberto() {
+  const aberto = state.retornoAbertoAtual;
+  if (!aberto) {
+    alert("Selecione um cliente primeiro.");
+    return;
+  }
+  document.getElementById("retornoQ10").value = aberto.q10 || 0;
+  document.getElementById("retornoQ20").value = aberto.q20 || 0;
+  document.getElementById("retornoQ30").value = aberto.q30 || 0;
+  document.getElementById("retornoQ50").value = aberto.q50 || 0;
+}
+
+async function abrirRetornoCliente(clienteId, clienteNome) {
+  mostrarTela("retornos");
+  document.querySelectorAll(".formBox").forEach(f => f.style.display = "none");
+  const form = document.getElementById("formRetorno");
+  if (form) form.style.display = "block";
+  await prepararFormRetorno();
+  const sel = document.getElementById("retornoCliente");
+  if (sel) {
+    sel.value = clienteId || "";
+    if (!sel.value && clienteNome) {
+      [...sel.options].forEach(op => {
+        if ((op.dataset.nome || op.textContent) === clienteNome) sel.value = op.value;
+      });
+    }
+  }
+  await atualizarResumoRetornoCliente();
+  window.scrollTo({ top:0, behavior:"smooth" });
+}
+
+async function salvarRetorno() {
+  mostrarErro("retornoErro", "");
+  await carregarBaseCadastros();
+
+  const clienteId = document.getElementById("retornoCliente").value;
+  const clienteOp = document.getElementById("retornoCliente").options[document.getElementById("retornoCliente").selectedIndex];
+  const cliente_nome = clienteOp ? (clienteOp.dataset.nome || clienteOp.textContent) : "";
+  const cerveja_nome = document.getElementById("retornoCerveja").value || "";
+  const q10 = Number(document.getElementById("retornoQ10").value || 0);
+  const q20 = Number(document.getElementById("retornoQ20").value || 0);
+  const q30 = Number(document.getElementById("retornoQ30").value || 0);
+  const q50 = Number(document.getElementById("retornoQ50").value || 0);
+  const codigos_barris = document.getElementById("retornoCodigos").value.trim();
+  const responsavel = document.getElementById("retornoResp").value.trim();
+  const observacao = document.getElementById("retornoObs").value.trim();
+
+  if (!clienteId || !cliente_nome) {
+    mostrarErro("retornoErro", "Selecione o cliente.");
+    return;
+  }
+
+  const total = somaBarris(q10,q20,q30,q50);
+  if (total <= 0) {
+    mostrarErro("retornoErro", "Informe pelo menos um barril retornado.");
+    return;
+  }
+
+  const [saidasBusca, retornosBusca] = await Promise.all([
+    sb.from("saidas").select("*").eq("cliente_id", clienteId),
+    sb.from("retornos").select("*").eq("cliente_id", clienteId)
+  ]);
+
+  const aberto = calcularAbertoDetalhado(saidasBusca.data || [], retornosBusca.data || [], clienteId, cliente_nome);
+  if (aberto.aberto > 0 && total > aberto.aberto) {
+    const ok = confirm(`Este retorno tem ${total} barril(is), mas o cliente aparece com ${aberto.aberto} em aberto. Deseja registrar mesmo assim?`);
+    if (!ok) return;
+  }
+
+  const { error } = await sb.from("retornos").insert({
+    cliente_id: clienteId,
+    cliente_nome,
+    cerveja_nome,
+    q10,q20,q30,q50,
+    codigos_barris,
+    responsavel,
+    observacao
+  });
+
+  if (error) {
+    mostrarErro("retornoErro", error.message);
+    return;
+  }
+
+  await sb.from("movimentacoes").insert({
+    tipo:"RETORNO BARRIL",
+    categoria:"BARRIL",
+    item_nome: cerveja_nome || "Barris retornados",
+    quantidade: total,
+    unidade:"UN",
+    cliente_nome,
+    observacao,
+    responsavel
+  });
+
+  ["retornoQ10","retornoQ20","retornoQ30","retornoQ50"].forEach(id => document.getElementById(id).value = 0);
+  ["retornoCodigos","retornoResp","retornoObs"].forEach(id => document.getElementById(id).value = "");
+  invalidar("retornos","inicio","painelDia","auditoria","clientes");
+  alert("Retorno registrado.");
+  carregarRetornos(true);
+}
+
+async function carregarRetornos(force=false) {
+  if (state.loaded.retornos && !force) return;
+
+  const [saidas, retornos] = await Promise.all([
+    sb.from("saidas").select("*").order("data_saida", { ascending:true }).limit(1000),
+    sb.from("retornos").select("*").order("criado_em", { ascending:false }).limit(1000)
+  ]);
+
+  const saidaRows = saidas.data || [];
+  const retornosRows = retornos.data || [];
+  state.retornos = retornosRows;
+  state.retornosSaidasBase = saidaRows;
+
+  const totalSaidaBarris = saidaRows.reduce((s,r) => s + somaBarris(r.q10,r.q20,r.q30,r.q50), 0);
+  const totalRetornoBarris = retornosRows.reduce((s,r) => s + somaBarris(r.q10,r.q20,r.q30,r.q50), 0);
+  const abertos = Math.max(0, totalSaidaBarris - totalRetornoBarris);
+  const porCliente = agruparAbertosPorCliente(saidaRows, retornosRows);
+
+  const limite = new Date();
+  limite.setDate(limite.getDate() - getConfigNumero("dias_alerta_barril_cliente", 21));
+  const saidasAntigas = saidaRows.filter(s => new Date(String(s.data_saida) + "T00:00:00") <= limite);
+  const barrisAntigosAprox = Math.max(0, saidasAntigas.reduce((s,r)=>s+somaBarris(r.q10,r.q20,r.q30,r.q50),0) - totalRetornoBarris);
+
+  if (document.getElementById("retornosBarrisAbertos")) document.getElementById("retornosBarrisAbertos").innerText = abertos;
+  if (document.getElementById("retornosTotalRegistrados")) document.getElementById("retornosTotalRegistrados").innerText = totalRetornoBarris;
+  if (document.getElementById("retornosClientesAbertos")) document.getElementById("retornosClientesAbertos").innerText = porCliente.length;
+  if (document.getElementById("retornosBarrisAntigos")) document.getElementById("retornosBarrisAntigos").innerText = barrisAntigosAprox;
+
+  const box = document.getElementById("barrisPorCliente");
+  if (box) {
+    box.innerHTML = porCliente.length ? "" : '<div class="item"><span class="sub">Nenhum barril em aberto.</span></div>';
+    porCliente.forEach(c => {
+      const dias = c.dataMaisAntiga ? Math.max(0, Math.floor((new Date() - new Date(c.dataMaisAntiga + "T00:00:00")) / 86400000)) : 0;
+      box.insertAdjacentHTML("beforeend", `
+        <div class="item searchable ${dias >= getConfigNumero("dias_alerta_barril_cliente", 21) ? "itemAtrasado" : "itemDestaque"}">
+          <div>
+            <strong>${escapeHtml(c.cliente)}</strong>
+            <div class="sub">Aberto: ${c.aberto} barril(is) • 10L=${c.q10} • 20L=${c.q20} • 30L=${c.q30} • 50L=${c.q50}</div>
+            <div class="sub">Saíram ${c.saidas} • retornaram ${c.retornos} • saída mais antiga ${c.dataMaisAntiga ? dataBR(c.dataMaisAntiga) : "-"}</div>
+            <div class="rowActions">
+              <button class="btnTiny btnEdit" data-id="${escapeHtml(c.cliente_id || "")}" data-nome="${escapeHtml(c.cliente || "")}" onclick="abrirRetornoCliente(this.dataset.id,this.dataset.nome)">Registrar retorno</button>
+            </div>
+          </div>
+          <span class="badge">${dias} dia(s)</span>
+        </div>
+      `);
+    });
+  }
+
+  const rbox = document.getElementById("listaRetornos");
+  if (rbox) {
+    rbox.innerHTML = retornosRows.length ? "" : '<div class="item"><span class="sub">Nenhum retorno registrado.</span></div>';
+    retornosRows.slice(0,50).forEach(r => {
+      rbox.insertAdjacentHTML("beforeend", `
+        <div class="item searchable">
+          <div>
+            <strong>${escapeHtml(r.cliente_nome)}</strong>
+            <div class="sub">${dataBR(r.data_retorno)} • ${escapeHtml(r.cerveja_nome || "Barris")}</div>
+            <div class="sub">10L=${r.q10||0} • 20L=${r.q20||0} • 30L=${r.q30||0} • 50L=${r.q50||0} • ${escapeHtml(r.codigos_barris || "")}</div>
+          </div>
+          <span class="badge">${somaBarris(r.q10,r.q20,r.q30,r.q50)}</span>
+        </div>
+      `);
+    });
+  }
+
+  state.loaded.retornos = true;
+}
+
+function exportarRetornosCsv() {
+  const rows = state.retornos || [];
+  if (!rows.length) {
+    alert("Carregue os retornos antes de exportar.");
+    return;
+  }
+
+  const linhas = [["Data","Cliente","Cerveja","10L","20L","30L","50L","Total barris","Códigos","Responsável","Observação"]];
+  rows.forEach(r => linhas.push([
+    r.data_retorno,
+    r.cliente_nome,
+    r.cerveja_nome || "",
+    r.q10 || 0,
+    r.q20 || 0,
+    r.q30 || 0,
+    r.q50 || 0,
+    somaBarris(r.q10,r.q20,r.q30,r.q50),
+    r.codigos_barris || "",
+    r.responsavel || "",
+    r.observacao || ""
+  ]));
+
+  baixarCsvErp("retornos-erp-cervejaria.csv", linhas);
+}
+
+async function carregarExtratoCliente() {
+  const clienteId = document.getElementById("extratoCliente").value;
+  const op = document.getElementById("extratoCliente").options[document.getElementById("extratoCliente").selectedIndex];
+  const clienteNome = op ? (op.dataset.nome || op.textContent) : "";
+  const box = document.getElementById("extratoClienteConteudo");
+
+  if (!clienteId || !clienteNome) {
+    box.innerHTML = '<div class="item"><span class="sub">Selecione um cliente.</span></div>';
+    return;
+  }
+
+  await carregarBaseCadastros();
+  const cliente = state.clientes.find(c => c.id === clienteId) || {};
+
+  const [saidas, retornos] = await Promise.all([
+    sb.from("saidas").select("*").eq("cliente_id", clienteId).order("data_saida", { ascending:false }).limit(500),
+    sb.from("retornos").select("*").eq("cliente_id", clienteId).order("data_retorno", { ascending:false }).limit(500)
+  ]);
+
+  const saidaRows = saidas.data || [];
+  const retornoRows = retornos.data || [];
+  const aberto = calcularAbertoDetalhado(saidaRows, retornoRows, clienteId, clienteNome);
+  const grupos = agruparSaidas(saidaRows);
+
+  const porCerveja = {};
+  saidaRows.forEach(s => porCerveja[s.cerveja_nome] = (porCerveja[s.cerveja_nome] || 0) + Number(s.litros || 0));
+
+  const eventos = [
+    ...grupos.map(g => ({
+      tipo:"SAÍDA",
+      data:g.data_saida,
+      titulo:`${g.itens.length} item(ns) enviados`,
+      detalhe:`${fmt(g.litros)} L • ${g.q10+g.q20+g.q30+g.q50} barril(is)`,
+      extra:g.itens.map(i => `${i.cerveja_nome}: ${fmt(i.litros)} L`).join(" | "),
+      peso:dataParaOrdenacao(g.criado_em || g.data_saida)
+    })),
+    ...retornoRows.map(r => ({
+      tipo:"RETORNO",
+      data:r.data_retorno,
+      titulo:r.cerveja_nome || "Barris retornados",
+      detalhe:`${somaBarris(r.q10,r.q20,r.q30,r.q50)} barril(is) • 10L=${r.q10||0} • 20L=${r.q20||0} • 30L=${r.q30||0} • 50L=${r.q50||0}`,
+      extra:r.codigos_barris || "",
+      peso:dataParaOrdenacao(r.criado_em || r.data_retorno)
+    }))
+  ].sort((a,b) => b.peso - a.peso);
+
+  box.innerHTML = `
+    <div class="item blocoVertical">
+      <strong>${escapeHtml(clienteNome)}</strong>
+      <div class="sub">${escapeHtml(cliente.estabelecimento || "-")} • ${escapeHtml(cliente.cidade || "-")}</div>
+      <div class="sub">${escapeHtml(cliente.contato || "")}</div>
+      <div class="sub">${escapeHtml(cliente.observacao || "")}</div>
+    </div>
+
+    <div class="gridCards">
+      <div class="card"><span>Litros enviados</span><strong>${fmt(aberto.litrosSaidos)} L</strong></div>
+      <div class="card"><span>Fichas de saída</span><strong>${grupos.length}</strong></div>
+      <div class="card"><span>Barris enviados</span><strong>${aberto.barrisSaidos}</strong></div>
+      <div class="card"><span>Barris retornados</span><strong>${aberto.barrisRetornados}</strong></div>
+      <div class="card"><span>Barris em aberto</span><strong>${aberto.aberto}</strong></div>
+    </div>
+
+    <div class="item blocoVertical">
+      <strong>Barris em aberto</strong>
+      <div class="sub">10L=${aberto.q10} • 20L=${aberto.q20} • 30L=${aberto.q30} • 50L=${aberto.q50}</div>
+      <div class="rowActions">
+        <button class="btnTiny btnEdit" onclick="abrirRetornoCliente('${clienteId}','${escapeHtml(clienteNome)}')">Registrar retorno deste cliente</button>
+      </div>
+    </div>
+
+    <div class="item blocoVertical">
+      <strong>Cervejas enviadas</strong>
+      <div class="sub">${
+        Object.entries(porCerveja).length
+        ? Object.entries(porCerveja).sort((a,b)=>b[1]-a[1]).map(([k,v]) => `${escapeHtml(k)}: ${fmt(v)} L`).join("<br>")
+        : "Nenhuma saída."
+      }</div>
+    </div>
+  `;
+
+  if (!eventos.length) {
+    box.insertAdjacentHTML("beforeend", '<div class="item"><span class="sub">Nenhum movimento para este cliente.</span></div>');
+  } else {
+    box.insertAdjacentHTML("beforeend", '<h3>Histórico do cliente</h3>');
+    eventos.forEach(e => {
+      box.insertAdjacentHTML("beforeend", `
+        <div class="item searchable">
+          <div>
+            <strong>${escapeHtml(e.tipo)} — ${escapeHtml(e.titulo)}</strong>
+            <div class="sub">${dataBR(e.data)} • ${escapeHtml(e.detalhe)}</div>
+            <div class="sub">${escapeHtml(e.extra)}</div>
+          </div>
+          <span class="badge">${escapeHtml(e.tipo)}</span>
+        </div>
+      `);
+    });
+  }
+
+  state.ultimaFichaCliente = {
+    cliente,
+    clienteNome,
+    saidaRows,
+    retornoRows,
+    grupos,
+    aberto,
+    porCerveja,
+    eventos
+  };
+}
+
+function exportarFichaClienteCsv() {
+  if (!state.ultimaFichaCliente) {
+    alert("Gere a ficha do cliente antes de exportar.");
+    return;
+  }
+
+  const f = state.ultimaFichaCliente;
+  const linhas = [];
+  linhas.push(["Ficha do cliente", f.clienteNome]);
+  linhas.push(["Estabelecimento", f.cliente.estabelecimento || ""]);
+  linhas.push(["Cidade", f.cliente.cidade || ""]);
+  linhas.push(["Contato", f.cliente.contato || ""]);
+  linhas.push([]);
+  linhas.push(["Resumo"]);
+  linhas.push(["Litros enviados", f.aberto.litrosSaidos]);
+  linhas.push(["Barris enviados", f.aberto.barrisSaidos]);
+  linhas.push(["Barris retornados", f.aberto.barrisRetornados]);
+  linhas.push(["Barris em aberto", f.aberto.aberto]);
+  linhas.push(["Aberto 10L", f.aberto.q10]);
+  linhas.push(["Aberto 20L", f.aberto.q20]);
+  linhas.push(["Aberto 30L", f.aberto.q30]);
+  linhas.push(["Aberto 50L", f.aberto.q50]);
+  linhas.push([]);
+  linhas.push(["Cervejas enviadas"]);
+  Object.entries(f.porCerveja).forEach(([k,v]) => linhas.push([k,v]));
+  linhas.push([]);
+  linhas.push(["Histórico"]);
+  linhas.push(["Data","Tipo","Título","Detalhe","Extra"]);
+  f.eventos.forEach(e => linhas.push([e.data,e.tipo,e.titulo,e.detalhe,e.extra]));
+
+  baixarCsvErp(`ficha-cliente-${f.clienteNome}.csv`, linhas);
+}
+
+function prepararFiltrosPhenomena() {
+  const de = document.getElementById("phenFiltroDe");
+  const ate = document.getElementById("phenFiltroAte");
+  if (ate && !ate.value) ate.value = new Date().toISOString().slice(0,10);
+  if (de && !de.value) {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 3);
+    de.value = d.toISOString().slice(0,10);
+  }
+}
+
+async function carregarPhenomena(force=false) {
+  if (state.loaded.phenomena && !force) return;
+  await carregarBaseCadastros();
+  prepararFiltrosPhenomena();
+
+  const periodo = getPeriodoInputs("phenFiltro");
+
+  let qEntradas = sb.from("phenomena_entradas").select("*").order("criado_em", { ascending:false }).limit(500);
+  let qRetiradas = sb.from("movimentacoes").select("*").eq("tipo","RETIRADA PHENOMENA").order("criado_em", { ascending:false }).limit(500);
+  let qDebitos = sb.from("phenomena_debitos").select("*").order("criado_em", { ascending:false }).limit(500);
+  let qPagamentos = sb.from("phenomena_pagamentos").select("*").order("criado_em", { ascending:false }).limit(500);
+
+  if (periodo.de) {
+    qEntradas = qEntradas.gte("criado_em", periodo.de);
+    qRetiradas = qRetiradas.gte("criado_em", periodo.de);
+    qDebitos = qDebitos.gte("criado_em", periodo.de);
+    qPagamentos = qPagamentos.gte("criado_em", periodo.de);
+  }
+  if (periodo.ateIso) {
+    qEntradas = qEntradas.lt("criado_em", periodo.ateIso);
+    qRetiradas = qRetiradas.lt("criado_em", periodo.ateIso);
+    qDebitos = qDebitos.lt("criado_em", periodo.ateIso);
+    qPagamentos = qPagamentos.lt("criado_em", periodo.ateIso);
+  }
+
+  const [estoque, entradas, retiradas, debitos, pagamentos, debitosTodos] = await Promise.all([
+    sb.from("estoque_cerveja").select("*").eq("origem","PHENOMENA").order("cerveja_nome"),
+    qEntradas,
+    qRetiradas,
+    qDebitos,
+    qPagamentos,
+    sb.from("phenomena_debitos").select("*").order("criado_em", { ascending:false }).limit(1000)
+  ]);
+
+  state.debitosPhenomena = debitosTodos.data || [];
+  const debitosPeriodo = debitos.data || [];
+  const pagamentosPeriodo = pagamentos.data || [];
+  const retiradasPeriodo = retiradas.data || [];
+  const entradasPeriodo = entradas.data || [];
+
+  const debitosAbertos = state.debitosPhenomena.filter(d => d.status !== "PAGO");
+  const saldoAberto = debitosAbertos.reduce((s,d) => s + (Number(d.valor_total || 0) - Number(d.valor_pago || 0)), 0);
+  const totalDebitadoPeriodo = debitosPeriodo.reduce((s,d)=>s+Number(d.valor_total||0),0);
+  const totalPagoPeriodo = pagamentosPeriodo.reduce((s,p)=>s+Number(p.valor||0),0);
+  const totalRetiradoPeriodo = retiradasPeriodo.reduce((s,r)=>s+Math.abs(Number(r.quantidade||0)),0);
+
+  if (document.getElementById("phenSaldoAberto")) document.getElementById("phenSaldoAberto").innerText = fmtMoeda(saldoAberto);
+  if (document.getElementById("phenQtdDebitos")) document.getElementById("phenQtdDebitos").innerText = debitosAbertos.length;
+  if (document.getElementById("phenTotalDebitado")) document.getElementById("phenTotalDebitado").innerText = fmtMoeda(totalDebitadoPeriodo);
+  if (document.getElementById("phenTotalPago")) document.getElementById("phenTotalPago").innerText = fmtMoeda(totalPagoPeriodo);
+  if (document.getElementById("phenTotalRetirado")) document.getElementById("phenTotalRetirado").innerText = fmt(totalRetiradoPeriodo) + " L";
+
+  const ebox = document.getElementById("estoquePhenomena");
+  const rows = estoque.data || [];
+  ebox.innerHTML = rows.length ? "" : '<div class="item"><span class="sub">Nenhum estoque Phenomena.</span></div>';
+  ordenarComZeradosFinal(rows, r => r.cerveja_nome, r => r.litros).forEach(r => {
+    ebox.insertAdjacentHTML("beforeend", `
+      <div class="item">
+        <div>
+          <strong>${escapeHtml(r.cerveja_nome)}</strong>
+          <div class="sub">10L=${r.q10 || 0} • 20L=${r.q20 || 0} • 30L=${r.q30 || 0} • 50L=${r.q50 || 0}</div>
+        </div>
+        <span class="badge ${Number(r.litros || 0) <= 0 ? "zero" : ""}">${fmt(r.litros)} L</span>
+      </div>
+    `);
+  });
+
+  const dbox = document.getElementById("debitosPhenomena");
+  dbox.innerHTML = debitosPeriodo.length ? "" : '<div class="item"><span class="sub">Nenhum débito no período.</span></div>';
+  debitosPeriodo.forEach(d => {
+    const aberto = Number(d.valor_total || 0) - Number(d.valor_pago || 0);
+    dbox.insertAdjacentHTML("beforeend", `
+      <div class="item searchable ${d.status === "PAGO" ? "" : "itemDestaque"}">
+        <div>
+          <strong>${escapeHtml(d.cerveja_nome)}</strong>
+          <div class="sub">${dataHoraBR(d.criado_em)} • ${fmt(d.litros)} L • ${escapeHtml(d.status || "ABERTO")}</div>
+          <div class="sub">Total ${fmtMoeda(d.valor_total)} • Pago ${fmtMoeda(d.valor_pago)} • Aberto ${fmtMoeda(aberto)}</div>
+          <div class="sub">${escapeHtml(d.observacao || "")}</div>
+        </div>
+        <span class="badge ${d.status === "PAGO" ? "" : "zero"}">${fmtMoeda(aberto)}</span>
+      </div>
+    `);
+  });
+
+  const pbox = document.getElementById("pagamentosPhenomena");
+  pbox.innerHTML = pagamentosPeriodo.length ? "" : '<div class="item"><span class="sub">Nenhum pagamento no período.</span></div>';
+  pagamentosPeriodo.forEach(p => {
+    pbox.insertAdjacentHTML("beforeend", `
+      <div class="item searchable">
+        <div>
+          <strong>Pagamento Phenomena</strong>
+          <div class="sub">${dataHoraBR(p.criado_em)} • ${escapeHtml(p.responsavel || "")}</div>
+          <div class="sub">${escapeHtml(p.observacao || "")}</div>
+        </div>
+        <span class="badge">${fmtMoeda(p.valor)}</span>
+      </div>
+    `);
+  });
+
+  const inbox = document.getElementById("entradasPhenomena");
+  inbox.innerHTML = entradasPeriodo.length ? "" : '<div class="item"><span class="sub">Nenhuma entrada no período.</span></div>';
+  entradasPeriodo.forEach(r => {
+    inbox.insertAdjacentHTML("beforeend", `
+      <div class="item searchable">
+        <div>
+          <strong>${escapeHtml(r.cerveja_nome)}</strong>
+          <div class="sub">${dataHoraBR(r.criado_em)} • ${escapeHtml(r.observacao || "")}</div>
+        </div>
+        <span class="badge">${fmt(r.litros)} L</span>
+      </div>
+    `);
+  });
+
+  const rout = document.getElementById("retiradasPhenomena");
+  rout.innerHTML = retiradasPeriodo.length ? "" : '<div class="item"><span class="sub">Nenhuma retirada no período.</span></div>';
+  retiradasPeriodo.forEach(r => {
+    rout.insertAdjacentHTML("beforeend", `
+      <div class="item searchable">
+        <div>
+          <strong>${escapeHtml(r.item_nome)}</strong>
+          <div class="sub">${dataHoraBR(r.criado_em)} • ${escapeHtml(r.responsavel || "")}</div>
+          <div class="sub">${escapeHtml(r.observacao || "")}</div>
+        </div>
+        <span class="badge">${fmt(Math.abs(Number(r.quantidade || 0)))} L</span>
+      </div>
+    `);
+  });
+
+  state.phenomenaPeriodo = {
+    periodo,
+    estoque: rows,
+    entradas: entradasPeriodo,
+    retiradas: retiradasPeriodo,
+    debitos: debitosPeriodo,
+    pagamentos: pagamentosPeriodo,
+    saldoAberto,
+    totalDebitadoPeriodo,
+    totalPagoPeriodo,
+    totalRetiradoPeriodo
+  };
+
+  state.loaded.phenomena = true;
+}
+
+async function prepararFormPagamentoPhenomena() {
+  const { data, error } = await sb.from("phenomena_debitos")
+    .select("*")
+    .neq("status","PAGO")
+    .order("criado_em", { ascending:true })
+    .limit(1000);
+
+  const sel = document.getElementById("phenPagDebito");
+  sel.innerHTML = '<option value="">Selecionar débito...</option>';
+
+  if (error) {
+    sel.innerHTML = '<option value="">Erro ao carregar débitos</option>';
+    return;
+  }
+
+  state.debitosPhenomena = data || [];
+  state.debitosPhenomena.forEach(d => {
+    const aberto = Number(d.valor_total || 0) - Number(d.valor_pago || 0);
+    const op = document.createElement("option");
+    op.value = d.id;
+    op.dataset.aberto = aberto;
+    op.dataset.total = d.valor_total || 0;
+    op.dataset.pago = d.valor_pago || 0;
+    op.textContent = `${d.cerveja_nome} — ${dataHoraBR(d.criado_em)} — aberto ${fmtMoeda(aberto)}`;
+    sel.appendChild(op);
+  });
+
+  atualizarResumoPagamentoPhenomena();
+}
+
+function exportarPhenomenaCsv() {
+  if (!state.phenomenaPeriodo) {
+    alert("Carregue a tela Phenomena antes de exportar.");
+    return;
+  }
+
+  const p = state.phenomenaPeriodo;
+  const linhas = [];
+  linhas.push(["Phenomena"]);
+  linhas.push(["Período", p.periodo.de || "", p.periodo.ate || ""]);
+  linhas.push([]);
+  linhas.push(["Resumo"]);
+  linhas.push(["Saldo aberto geral", p.saldoAberto]);
+  linhas.push(["Total debitado período", p.totalDebitadoPeriodo]);
+  linhas.push(["Total pago período", p.totalPagoPeriodo]);
+  linhas.push(["Litros retirados período", p.totalRetiradoPeriodo]);
+
+  linhas.push([]);
+  linhas.push(["Débitos"]);
+  linhas.push(["Data","Cerveja","Litros","Valor total","Valor pago","Aberto","Status","Observação"]);
+  p.debitos.forEach(d => linhas.push([
+    d.criado_em,
+    d.cerveja_nome,
+    d.litros || 0,
+    d.valor_total || 0,
+    d.valor_pago || 0,
+    Number(d.valor_total || 0) - Number(d.valor_pago || 0),
+    d.status || "",
+    d.observacao || ""
+  ]));
+
+  linhas.push([]);
+  linhas.push(["Pagamentos"]);
+  linhas.push(["Data","Valor","Responsável","Observação"]);
+  p.pagamentos.forEach(pg => linhas.push([pg.criado_em, pg.valor || 0, pg.responsavel || "", pg.observacao || ""]));
+
+  linhas.push([]);
+  linhas.push(["Entradas"]);
+  linhas.push(["Data","Cerveja","Litros","Observação"]);
+  p.entradas.forEach(e => linhas.push([e.criado_em, e.cerveja_nome, e.litros || 0, e.observacao || ""]));
+
+  linhas.push([]);
+  linhas.push(["Retiradas"]);
+  linhas.push(["Data","Cerveja","Litros","Responsável","Observação"]);
+  p.retiradas.forEach(r => linhas.push([r.criado_em, r.item_nome, Math.abs(Number(r.quantidade || 0)), r.responsavel || "", r.observacao || ""]));
+
+  baixarCsvErp("phenomena-erp-cervejaria.csv", linhas);
+}
+

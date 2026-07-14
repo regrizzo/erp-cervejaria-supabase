@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>ERP Cervejaria</title>
 
-  <link rel="manifest" href="./manifest.json?v=lotes-por-cerveja-20260714" />
+  <link rel="manifest" href="./manifest.json?v=updates-saidas-retornos-clientes-phenomena-20260714" />
   <link rel="icon" type="image/png" href="https://regrizzo.github.io/erp-cervejaria-icons/icon-192.png" />
   <link rel="apple-touch-icon" href="https://regrizzo.github.io/erp-cervejaria-icons/apple-touch-icon-180.png" />
   <meta name="theme-color" content="#0c2949" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
 
-  <link rel="stylesheet" href="./styles.css?v=lotes-por-cerveja-20260714" />
+  <link rel="stylesheet" href="./styles.css?v=updates-saidas-retornos-clientes-phenomena-20260714" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
@@ -432,7 +432,10 @@
           <button class="btnSmall" onclick="carregarSaidas(true)">Atualizar</button>
         </div>
 
-        <button class="btnMain" onclick="toggleForm('formSaida')">+ Registrar saída</button>
+        <div class="actionGrid">
+          <button class="btnMain" onclick="toggleForm('formSaida')">+ Registrar saída</button>
+          <button class="btnSecondary" onclick="exportarSaidasCsv()">Exportar saídas CSV</button>
+        </div>
 
         <div id="formSaida" class="formBox" style="display:none;">
           <h3>Saída múltipla</h3>
@@ -454,7 +457,10 @@
           <div id="saidaErro" class="erro"></div>
         </div>
 
-        <h3>Últimas saídas</h3>
+        <div id="saidasResumo" class="gridCards"></div>
+
+        <h3>Saídas agrupadas</h3>
+        <p class="muted">Cada ficha pode reunir várias cervejas enviadas ao mesmo cliente na mesma saída.</p>
         <input class="search" placeholder="Buscar saída..." oninput="filtrarLista('listaSaidas', this.value)">
         <div id="listaSaidas" class="lista"></div>
       </section>
@@ -620,9 +626,30 @@
           <div id="phenPagErro" class="erro"></div>
         </div>
 
+        <div class="box">
+          <h3>Filtros e exportação</h3>
+          <div class="linha2">
+            <div>
+              <label>De</label>
+              <input id="phenFiltroDe" type="date">
+            </div>
+            <div>
+              <label>Até</label>
+              <input id="phenFiltroAte" type="date">
+            </div>
+          </div>
+          <div class="actionGrid">
+            <button class="btnSecondary" onclick="carregarPhenomena(true)">Aplicar filtro</button>
+            <button class="btnSecondary" onclick="exportarPhenomenaCsv()">Exportar CSV</button>
+          </div>
+        </div>
+
         <div class="gridCards">
-          <div class="card"><span>Saldo Phenomena aberto</span><strong id="phenSaldoAberto">R$ 0,00</strong></div>
+          <div class="card"><span>Saldo aberto</span><strong id="phenSaldoAberto">R$ 0,00</strong></div>
           <div class="card"><span>Débitos abertos</span><strong id="phenQtdDebitos">0</strong></div>
+          <div class="card"><span>Total debitado</span><strong id="phenTotalDebitado">R$ 0,00</strong></div>
+          <div class="card"><span>Total pago</span><strong id="phenTotalPago">R$ 0,00</strong></div>
+          <div class="card"><span>Litros retirados</span><strong id="phenTotalRetirado">0 L</strong></div>
         </div>
 
         <h3>Estoque Phenomena</h3>
@@ -697,14 +724,19 @@
           <button class="btnSmall" onclick="carregarRetornos(true)">Atualizar</button>
         </div>
 
-        <button class="btnMain" onclick="toggleForm('formRetorno')">↩️ Registrar retorno</button>
+        <div class="actionGrid">
+          <button class="btnMain" onclick="toggleForm('formRetorno')">↩️ Registrar retorno</button>
+          <button class="btnSecondary" onclick="exportarRetornosCsv()">Exportar retornos CSV</button>
+        </div>
 
         <div id="formRetorno" class="formBox" style="display:none;">
           <h3>Retorno de barris</h3>
           <p class="muted">Registre os barris vazios que voltaram do cliente. Isso não altera o estoque de cerveja.</p>
 
           <label>Cliente</label>
-          <select id="retornoCliente"></select>
+          <select id="retornoCliente" onchange="atualizarResumoRetornoCliente()"></select>
+          <div id="retornoResumoCliente" class="infoBox">Selecione um cliente para ver os barris em aberto.</div>
+          <button type="button" class="btnMini" onclick="preencherRetornoAberto()">Preencher retorno com aberto</button>
 
           <label>Cerveja</label>
           <select id="retornoCerveja"></select>
@@ -734,9 +766,12 @@
         <div class="gridCards">
           <div class="card"><span>Barris em clientes</span><strong id="retornosBarrisAbertos">0</strong></div>
           <div class="card"><span>Retornos registrados</span><strong id="retornosTotalRegistrados">0</strong></div>
+          <div class="card"><span>Clientes com barris</span><strong id="retornosClientesAbertos">0</strong></div>
+          <div class="card"><span>Barris +21 dias</span><strong id="retornosBarrisAntigos">0</strong></div>
         </div>
 
-        <h3>Barris em aberto por cliente</h3>
+        <h3>Clientes com barris em aberto</h3>
+        <p class="muted">Use o botão do cliente para registrar retorno parcial ou total.</p>
         <div id="barrisPorCliente" class="lista"></div>
 
         <h3>Retornos recentes</h3>
@@ -817,10 +852,13 @@
         </div>
 
         <div id="formExtratoCliente" class="formBox" style="display:none;">
-          <h3>Extrato de cliente</h3>
+          <h3>Ficha completa do cliente</h3>
           <label>Cliente</label>
           <select id="extratoCliente"></select>
-          <button onclick="carregarExtratoCliente()">Gerar extrato</button>
+          <div class="actionGrid">
+            <button onclick="carregarExtratoCliente()">Gerar ficha</button>
+            <button class="btnSecondary" onclick="exportarFichaClienteCsv()">Exportar CSV</button>
+          </div>
           <div id="extratoClienteConteudo" class="lista" style="margin-top:12px;"></div>
         </div>
 
@@ -890,6 +928,6 @@
     </nav>
   </div>
 
-  <script src="./app.js?v=lotes-por-cerveja-20260714"></script>
+  <script src="./app.js?v=updates-saidas-retornos-clientes-phenomena-20260714"></script>
 </body>
 </html>

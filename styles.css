@@ -302,3 +302,59 @@ h3 { margin:18px 0 10px; }
   background:#dcfce7;
   color:#166534;
 }
+
+
+/* Updates: saídas, retornos, clientes e Phenomena */
+.kpiInline {
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:8px;
+}
+.kpiInline span {
+  background:#eef2ff;
+  color:#1e293b;
+  border-radius:999px;
+  padding:5px 8px;
+  font-size:11px;
+  font-weight:800;
+}
+.itemDestaque {
+  border-left:4px solid #0ea5e9;
+  padding-left:10px;
+}
+.itemAtrasado {
+  border-left:4px solid #ef4444;
+  padding-left:10px;
+}
+.rowActions {
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:8px;
+}
+.miniSection {
+  margin-top:12px;
+  padding-top:10px;
+  border-top:1px solid var(--border);
+}
+.miniSection strong {
+  display:block;
+  margin-bottom:5px;
+}
+.tableLite {
+  width:100%;
+  border-collapse:collapse;
+  font-size:12px;
+}
+.tableLite th,
+.tableLite td {
+  border-bottom:1px solid var(--border);
+  padding:7px 4px;
+  text-align:left;
+}
+.tableLite th {
+  color:#475569;
+  font-size:11px;
+  text-transform:uppercase;
+}
