@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>ERP Cervejaria</title>
 
-  <link rel="manifest" href="./manifest.json?v=cadastro-na-tela-login-20260714" />
+  <link rel="manifest" href="./manifest.json?v=login-google-20260714" />
   <link rel="icon" type="image/png" href="https://regrizzo.github.io/erp-cervejaria-icons/icon-192.png" />
   <link rel="apple-touch-icon" href="https://regrizzo.github.io/erp-cervejaria-icons/apple-touch-icon-180.png" />
   <meta name="theme-color" content="#0c2949" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
 
-  <link rel="stylesheet" href="./styles.css?v=cadastro-na-tela-login-20260714" />
+  <link rel="stylesheet" href="./styles.css?v=login-google-20260714" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
@@ -30,9 +30,17 @@
       <input id="loginSenha" type="password" placeholder="senha">
 
       <button class="loginPrimary" onclick="login()">Entrar</button>
-      <button class="loginSecondary" onclick="mostrarCadastro()">Criar cadastro</button>
+
+      <div class="loginDivider"><span>ou</span></div>
+
+      <button id="loginGoogleBtn" class="googleLoginButton" onclick="entrarComGoogle()">
+        <span class="googleMark" aria-hidden="true">G</span>
+        <span>Continuar com Google</span>
+      </button>
+
+      <button class="loginSecondary" onclick="mostrarCadastro()">Criar cadastro com e-mail</button>
       <div id="loginErro" class="erro"></div>
-      <small>Cadastros novos ficam aguardando a liberação do administrador.</small>
+      <small>O primeiro acesso com Google também fica aguardando a liberação do administrador.</small>
     </div>
   </div>
 
@@ -1177,6 +1185,6 @@
     </nav>
   </div>
 
-  <script src="./app.js?v=cadastro-na-tela-login-20260714"></script>
+  <script src="./app.js?v=login-google-20260714"></script>
 </body>
 </html>

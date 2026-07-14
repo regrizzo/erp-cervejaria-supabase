@@ -1,5 +1,5 @@
 
-const APP_BUILD = "cadastro-na-tela-login-20260714";
+const APP_BUILD = "login-google-20260714";
 
 // Evita o celular/PWA segurar arquivos antigos do app.
 (function limparCacheAntigo() {
@@ -8890,3 +8890,52 @@ async function cadastrarNovoUsuario() {
   }
 }
 
+
+
+/* ==========================================================
+   LOGIN COM GOOGLE
+   ========================================================== */
+
+const GOOGLE_LOGIN_REDIRECT = "https://regrizzo.github.io/erp-cervejaria-supabase/";
+
+async function entrarComGoogle() {
+  const erro = document.getElementById("loginErro");
+  const btn = document.getElementById("loginGoogleBtn");
+
+  if (erro) erro.style.display = "none";
+  if (btn) {
+    btn.disabled = true;
+    btn.querySelector("span:last-child").innerText = "Abrindo Google...";
+  }
+
+  try {
+    const { error } = await sb.auth.signInWithOAuth({
+      provider:"google",
+      options:{
+        redirectTo:GOOGLE_LOGIN_REDIRECT,
+        queryParams:{
+          prompt:"select_account"
+        }
+      }
+    });
+
+    if (error) throw error;
+  } catch(e) {
+    if (erro) {
+      erro.innerText = String(e?.message || e || "Não foi possível entrar com Google.");
+      erro.style.display = "block";
+    }
+
+    if (btn) {
+      btn.disabled = false;
+      btn.querySelector("span:last-child").innerText = "Continuar com Google";
+    }
+  }
+}
+
+// Garante a abertura do app depois que o Google devolver o usuário ao site.
+sb.auth.onAuthStateChange((evento, sessao) => {
+  if (evento === "SIGNED_IN" && sessao) {
+    setTimeout(() => iniciarApp(), 0);
+  }
+});
