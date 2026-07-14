@@ -1,1 +1,1 @@
-# erp-cervejaria-supabase
+# erp-cervejaria-da-lagoa
