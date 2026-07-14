@@ -1,5 +1,5 @@
 
-const APP_BUILD = "operacional-completo-20260714";
+const APP_BUILD = "sem-botoes-atualizar-20260714";
 
 // Evita o celular/PWA segurar arquivos antigos do app.
 (function limparCacheAntigo() {

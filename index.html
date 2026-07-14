@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>ERP Cervejaria</title>
 
-  <link rel="manifest" href="./manifest.json?v=operacional-completo-20260714" />
+  <link rel="manifest" href="./manifest.json?v=sem-botoes-atualizar-20260714" />
   <link rel="icon" type="image/png" href="https://regrizzo.github.io/erp-cervejaria-icons/icon-192.png" />
   <link rel="apple-touch-icon" href="https://regrizzo.github.io/erp-cervejaria-icons/apple-touch-icon-180.png" />
   <meta name="theme-color" content="#0c2949" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
 
-  <link rel="stylesheet" href="./styles.css?v=operacional-completo-20260714" />
+  <link rel="stylesheet" href="./styles.css?v=sem-botoes-atualizar-20260714" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
@@ -75,7 +75,6 @@
       <section id="telaInicio" class="tela active">
         <div class="sectionHeader">
           <h2>Dashboard</h2>
-          <button class="btnSmall" onclick="carregarInicio(true)">Atualizar</button>
         </div>
 
         <div class="gridCards">
@@ -181,7 +180,6 @@
       <section id="telaProducao" class="tela">
         <div class="sectionHeader">
           <h2>Produção</h2>
-          <button class="btnSmall" onclick="carregarProducao(true)">Atualizar</button>
         </div>
 
         <div class="actionGrid">
@@ -312,7 +310,6 @@
       <section id="telaEstoque" class="tela">
         <div class="sectionHeader">
           <h2>Estoque</h2>
-          <button class="btnSmall" onclick="carregarEstoque(true)">Atualizar</button>
         </div>
 
         <div class="actionGrid">
@@ -482,7 +479,6 @@
       <section id="telaSaidas" class="tela">
         <div class="sectionHeader">
           <h2>Saídas</h2>
-          <button class="btnSmall" onclick="carregarSaidas(true)">Atualizar</button>
         </div>
 
         <div class="actionGrid">
@@ -538,7 +534,6 @@
       <section id="telaLotes" class="tela">
         <div class="sectionHeader">
           <h2>Lotes</h2>
-          <button class="btnSmall" onclick="carregarLotes(true)">Atualizar</button>
         </div>
 
         <div class="box">
@@ -570,7 +565,6 @@
       <section id="telaFermentos" class="tela">
         <div class="sectionHeader">
           <h2>Fermentos</h2>
-          <button class="btnSmall" onclick="carregarFermentos(true)">Atualizar</button>
         </div>
 
         <div class="actionGrid">
@@ -624,7 +618,6 @@
       <section id="telaPhenomena" class="tela">
         <div class="sectionHeader">
           <h2>👽 Phenomena</h2>
-          <button class="btnSmall" onclick="carregarPhenomena(true)">Atualizar</button>
         </div>
 
         <div class="actionGrid">
@@ -726,7 +719,6 @@
       <section id="telaPainelDia" class="tela">
         <div class="sectionHeader">
           <h2>Painel do dia</h2>
-          <button class="btnSmall" onclick="carregarPainelDia(true)">Atualizar</button>
         </div>
         <div id="painelDiaConteudo" class="lista"></div>
       </section>
@@ -751,7 +743,6 @@
       <section id="telaAuditoria" class="tela">
         <div class="sectionHeader">
           <h2>Auditoria</h2>
-          <button class="btnSmall" onclick="carregarAuditoria(true)">Atualizar</button>
         </div>
 
         <h3>Últimas movimentações</h3>
@@ -776,7 +767,6 @@
       <section id="telaRetornos" class="tela">
         <div class="sectionHeader">
           <h2>Retornos</h2>
-          <button class="btnSmall" onclick="carregarRetornos(true)">Atualizar</button>
         </div>
 
         <div class="actionGrid">
@@ -837,7 +827,6 @@
       <section id="telaConfiguracoes" class="tela">
         <div class="sectionHeader">
           <h2>Configurações</h2>
-          <button class="btnSmall" onclick="carregarConfiguracoes(true)">Atualizar</button>
         </div>
 
         <div class="formBox" style="display:block;">
@@ -878,7 +867,6 @@
       <section id="telaClientes" class="tela">
         <div class="sectionHeader">
           <h2>Clientes</h2>
-          <button class="btnSmall" onclick="carregarClientes(true)">Atualizar</button>
         </div>
 
         <div class="actionGrid">
@@ -925,7 +913,6 @@
       <section id="telaCadastros" class="tela">
         <div class="sectionHeader">
           <h2>Cadastros</h2>
-          <button class="btnSmall" onclick="carregarCadastros(true)">Atualizar</button>
         </div>
 
         <button class="btnMain" onclick="novaCerveja()">+ Cerveja</button>
@@ -984,6 +971,6 @@
     </nav>
   </div>
 
-  <script src="./app.js?v=operacional-completo-20260714"></script>
+  <script src="./app.js?v=sem-botoes-atualizar-20260714"></script>
 </body>
 </html>
