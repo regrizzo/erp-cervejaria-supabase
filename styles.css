@@ -120,11 +120,25 @@ h3 { margin:18px 0 10px; }
 .btnEdit { background:#0ea5e9; }
 .btnDangerTiny { background:#ef4444; }
 .btnNeutral { background:#64748b; }
-.resumoLinha {
-  display:flex;
-  justify-content:space-between;
-  gap:10px;
-  padding:7px 0;
-  border-bottom:1px solid var(--border);
+.loteFichaTitulo {
+  font-size:18px;
+  font-weight:950;
+  margin-bottom:6px;
 }
-.resumoLinha:last-child { border-bottom:0; }
+.fichaGrid {
+  display:grid;
+  gap:10px;
+}
+.fichaSecao {
+  background:#f8fafc;
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:12px;
+  margin-top:10px;
+}
+.fichaSecao h4 {
+  margin:0 0 8px;
+}
+@media (min-width:640px) {
+  .fichaGrid { grid-template-columns:1fr 1fr; }
+}

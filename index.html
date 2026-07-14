@@ -39,7 +39,7 @@
     <header class="topbar">
       <div>
         <div class="appTitle">ERP Cervejaria</div>
-        <div class="appSub">Supabase • V10 cadastros e extratos</div>
+        <div class="appSub">Supabase • V11 ficha de lote</div>
       </div>
       <button class="btnGhost" onclick="logout()">Sair</button>
     </header>
@@ -379,6 +379,7 @@
         <div class="maisGrid">
           <div class="maisCard" onclick="mostrarTela('clientes')"><strong>👥 Clientes</strong><span>Cadastro e consulta</span></div>
           <div class="maisCard" onclick="mostrarTela('cadastros')"><strong>🗂️ Cadastros</strong><span>Cervejas e insumos</span></div>
+          <div class="maisCard" onclick="mostrarTela('lotes')"><strong>🧪 Lotes</strong><span>Ficha completa e histórico</span></div>
           <div class="maisCard" onclick="mostrarTela('fermentos')"><strong>🧫 Fermentos</strong><span>Coleta, reuso e descarte</span></div>
           <div class="maisCard" onclick="mostrarTela('phenomena')"><strong>💰 Phenomena</strong><span>Entradas, estoque e retiradas</span></div>
           <div class="maisCard" onclick="mostrarTela('retornos')"><strong>↩️ Retornos</strong><span>Retorno de barris dos clientes</span></div>
@@ -387,6 +388,37 @@
           <div class="maisCard" onclick="mostrarTela('auditoria')"><strong>🧾 Auditoria</strong><span>Últimos lançamentos</span></div>
           <div class="maisCard" onclick="mostrarTela('configuracoes')"><strong>⚙️ Configurações</strong><span>Regras e parâmetros</span></div>
           <div class="maisCard" onclick="mostrarTela('backup')"><strong>💾 Backup</strong><span>Exportar dados em JSON</span></div>
+        </div>
+      </section>
+
+      <section id="telaLotes" class="tela">
+        <div class="sectionHeader">
+          <h2>Lotes</h2>
+          <button class="btnSmall" onclick="carregarLotes(true)">Atualizar</button>
+        </div>
+
+        <div class="box">
+          <h3>Buscar lote</h3>
+          <input class="search" id="buscaLotes" placeholder="Buscar por lote, cerveja ou status..." oninput="filtrarLista('listaLotes', this.value)">
+        </div>
+
+        <div class="tabs">
+          <button class="tab active" onclick="mostrarSubLotes('todos')">Todos</button>
+          <button class="tab" onclick="mostrarSubLotes('fermentando')">Fermentando</button>
+          <button class="tab" onclick="mostrarSubLotes('envasados')">Envasados</button>
+        </div>
+
+        <div id="resumoLotes" class="gridCards"></div>
+
+        <h3>Histórico de lotes</h3>
+        <div id="listaLotes" class="lista"></div>
+
+        <div id="fichaLoteBox" class="formBox" style="display:none;">
+          <div class="sectionHeader">
+            <h3>Ficha do lote</h3>
+            <button class="btnSmall" onclick="fecharFichaLote()">Fechar</button>
+          </div>
+          <div id="fichaLoteConteudo"></div>
         </div>
       </section>
 
@@ -541,6 +573,11 @@
 
         <label>Mês</label>
         <input id="relatorioMes" type="month">
+
+        <div class="actionGrid">
+          <button class="btnMain" onclick="carregarRelatorioMensal(true)">Gerar relatório</button>
+          <button class="btnSecondary" onclick="exportarRelatorioMensalCsv()">Exportar CSV</button>
+        </div>
 
         <div id="relatorioConteudo" class="lista"></div>
       </section>
