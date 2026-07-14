@@ -577,3 +577,70 @@ h3 { margin:18px 0 10px; }
     grid-template-columns:1fr 1fr;
   }
 }
+
+
+/* Correções seguras e restauração de backup */
+.btnDangerWide {
+  width:100%;
+  min-height:48px;
+  border:none;
+  border-radius:12px;
+  background:#b91c1c;
+  color:#fff;
+  font-weight:900;
+  padding:12px 14px;
+}
+.btnDangerWide:disabled {
+  opacity:.45;
+  cursor:not-allowed;
+}
+.correcaoSelecionada {
+  border-left:4px solid #b91c1c;
+}
+.correcaoTipo {
+  display:inline-flex;
+  align-items:center;
+  border-radius:999px;
+  padding:4px 7px;
+  font-size:10px;
+  font-weight:900;
+  background:#fee2e2;
+  color:#991b1b;
+}
+.backupPreviewGrid {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:7px;
+  margin-top:8px;
+}
+.backupPreviewGrid div {
+  background:#fff;
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  padding:7px;
+}
+.backupPreviewGrid span {
+  display:block;
+  font-size:10px;
+  text-transform:uppercase;
+  color:#64748b;
+  font-weight:900;
+}
+.backupPreviewGrid strong {
+  display:block;
+  margin-top:3px;
+  color:#0f172a;
+}
+.restoreProgress {
+  width:100%;
+  height:10px;
+  border-radius:999px;
+  overflow:hidden;
+  background:#e2e8f0;
+  margin-top:8px;
+}
+.restoreProgress > div {
+  height:100%;
+  background:#0ea5e9;
+  transition:width .2s ease;
+}

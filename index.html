@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>ERP Cervejaria</title>
 
-  <link rel="manifest" href="./manifest.json?v=sem-botoes-atualizar-20260714" />
+  <link rel="manifest" href="./manifest.json?v=correcoes-backup-20260714" />
   <link rel="icon" type="image/png" href="https://regrizzo.github.io/erp-cervejaria-icons/icon-192.png" />
   <link rel="apple-touch-icon" href="https://regrizzo.github.io/erp-cervejaria-icons/apple-touch-icon-180.png" />
   <meta name="theme-color" content="#0c2949" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
 
-  <link rel="stylesheet" href="./styles.css?v=sem-botoes-atualizar-20260714" />
+  <link rel="stylesheet" href="./styles.css?v=correcoes-backup-20260714" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
@@ -527,7 +527,8 @@
           <div class="maisCard" onclick="mostrarTela('relatorio')"><strong>📊 Relatório mensal</strong><span>Produção, envase e consumo</span></div>
           <div class="maisCard" onclick="mostrarTela('auditoria')"><strong>🧾 Auditoria</strong><span>Últimos lançamentos</span></div>
           <div class="maisCard" onclick="mostrarTela('configuracoes')"><strong>⚙️ Configurações</strong><span>Regras e parâmetros</span></div>
-          <div class="maisCard" onclick="mostrarTela('backup')"><strong>💾 Backup</strong><span>Exportar dados em JSON</span></div>
+          <div class="maisCard" onclick="mostrarTela('correcoes')"><strong>🛡️ Correções</strong><span>Estornar lançamentos com segurança</span></div>
+          <div class="maisCard" onclick="mostrarTela('backup')"><strong>💾 Backup</strong><span>Exportar e restaurar dados</span></div>
         </div>
       </section>
 
@@ -752,16 +753,104 @@
         <div id="auditoriaAjustes" class="lista"></div>
       </section>
 
+      <section id="telaCorrecoes" class="tela">
+        <div class="sectionHeader">
+          <h2>Correções seguras</h2>
+        </div>
+
+        <div class="box">
+          <h3>Estornar lançamento</h3>
+          <p class="muted">
+            O lançamento original é retirado, o estoque é revertido e o motivo fica registrado.
+            Depois, faça um novo lançamento com as informações corretas.
+          </p>
+
+          <label>Tipo de lançamento</label>
+          <select id="correcaoTipo" onchange="carregarCorrecoes(true)">
+            <option value="SAIDA">Saída para cliente</option>
+            <option value="RETORNO">Retorno de barril</option>
+            <option value="ENVASE">Envase</option>
+            <option value="ENTRADA_CERVEJA">Entrada de cerveja</option>
+            <option value="ENTRADA_INSUMO">Compra/entrada de insumo</option>
+            <option value="PRODUCAO">Produção</option>
+          </select>
+
+          <div class="infoBox">
+            Saídas antigas, registradas antes desta atualização, podem não possuir o detalhamento necessário para o estorno automático.
+            Nesses casos o app bloqueia a operação para não alterar o estoque de forma incorreta.
+          </div>
+        </div>
+
+        <h3>Lançamentos recentes</h3>
+        <div id="correcoesLista" class="lista"></div>
+
+        <div id="correcaoConfirmacao" class="formBox" style="display:none;">
+          <h3>Confirmar estorno</h3>
+          <div id="correcaoResumo" class="infoBox"></div>
+
+          <label>Motivo da correção</label>
+          <textarea id="correcaoMotivo" placeholder="Explique o que estava incorreto"></textarea>
+
+          <label>Responsável</label>
+          <input id="correcaoResponsavel" placeholder="Quem está fazendo a correção">
+
+          <label class="checkLine">
+            <input id="correcaoConfirmarCheck" type="checkbox">
+            <span>Conferi o lançamento e entendo que ele será estornado.</span>
+          </label>
+
+          <button class="btnDangerWide" onclick="executarCorrecaoSelecionada()">Estornar lançamento</button>
+          <div id="correcaoErro" class="erro"></div>
+        </div>
+
+        <h3>Histórico de correções</h3>
+        <div id="correcoesHistorico" class="lista"></div>
+      </section>
+
       <section id="telaBackup" class="tela">
         <div class="sectionHeader">
           <h2>Backup</h2>
         </div>
 
         <div class="box">
-          <p class="muted">Gera um arquivo JSON com os principais dados do ERP e baixa no seu celular/computador.</p>
+          <h3>Gerar backup</h3>
+          <p class="muted">Gera um arquivo JSON com os dados do ERP.</p>
           <button onclick="gerarBackupJson()">💾 Gerar backup JSON</button>
           <div id="backupStatus" class="muted" style="margin-top:10px;"></div>
         </div>
+
+        <div class="box">
+          <h3>Restaurar backup</h3>
+          <p class="muted">
+            A restauração segura adiciona somente registros que ainda não existem.
+            Ela não apaga nem substitui os dados atuais.
+          </p>
+
+          <label>Arquivo JSON</label>
+          <input id="backupArquivo" type="file" accept=".json,application/json" onchange="analisarArquivoBackup()">
+
+          <div id="backupPrevia" class="infoBox">Selecione um arquivo para analisar.</div>
+
+          <label>Responsável</label>
+          <input id="backupResponsavel" placeholder="Quem está restaurando">
+
+          <label>Observação</label>
+          <textarea id="backupObservacao" placeholder="Ex: recuperação após exclusão acidental"></textarea>
+
+          <label class="checkLine">
+            <input id="backupConfirmarCheck" type="checkbox">
+            <span>Conferi a prévia e desejo restaurar apenas os registros ausentes.</span>
+          </label>
+
+          <button id="backupRestaurarBtn" class="btnDangerWide" onclick="restaurarBackupSeguro()" disabled>
+            Restaurar registros ausentes
+          </button>
+
+          <div id="backupRestauracaoStatus" class="muted" style="margin-top:10px;"></div>
+        </div>
+
+        <h3>Últimas restaurações</h3>
+        <div id="backupHistoricoRestauracoes" class="lista"></div>
       </section>
 
       <section id="telaRetornos" class="tela">
@@ -971,6 +1060,6 @@
     </nav>
   </div>
 
-  <script src="./app.js?v=sem-botoes-atualizar-20260714"></script>
+  <script src="./app.js?v=correcoes-backup-20260714"></script>
 </body>
 </html>
