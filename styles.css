@@ -159,3 +159,7 @@ h3 { margin:18px 0 10px; }
   background:#fef3c7 !important;
   color:#92400e !important;
 }
+
+.movEntrada { color:#166534; font-weight:900; }
+.movSaida { color:#991b1b; font-weight:900; }
+.movNeutro { color:#334155; font-weight:900; }

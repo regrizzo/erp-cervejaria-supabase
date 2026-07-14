@@ -17,7 +17,8 @@ const state = {
   filtroLotes: "todos",
   ultimoRelatorioMensal: null,
   comprasInsumosDetalhe: [],
-  consumoInsumosDetalhe: []
+  consumoInsumosDetalhe: [],
+  ultimoExtratoCerveja: null
 };
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -75,6 +76,7 @@ function mostrarTela(nome) {
     auditoria: "telaAuditoria",
     configuracoes: "telaConfiguracoes",
     backup: "telaBackup",
+    cervejasDetalhe: "telaCervejasDetalhe",
     insumosDetalhe: "telaInsumosDetalhe",
     lotes: "telaLotes",
     clientes: "telaClientes",
@@ -88,7 +90,7 @@ function mostrarTela(nome) {
   if (nome === "producao") btns[1].classList.add("active");
   if (nome === "estoque") btns[2].classList.add("active");
   if (nome === "saidas") btns[3].classList.add("active");
-  if (["mais","clientes","cadastros","insumosDetalhe","lotes","fermentos","phenomena","retornos","painelDia","relatorio","auditoria","configuracoes","backup"].includes(nome)) btns[4].classList.add("active");
+  if (["mais","clientes","cadastros","cervejasDetalhe","insumosDetalhe","lotes","fermentos","phenomena","retornos","painelDia","relatorio","auditoria","configuracoes","backup"].includes(nome)) btns[4].classList.add("active");
 
   if (nome === "inicio") carregarInicio();
   if (nome === "producao") carregarProducao();
@@ -96,6 +98,7 @@ function mostrarTela(nome) {
   if (nome === "saidas") carregarSaidas();
   if (nome === "clientes") carregarClientes();
   if (nome === "cadastros") carregarCadastros();
+  if (nome === "cervejasDetalhe") carregarCervejasDetalhe();
   if (nome === "insumosDetalhe") carregarInsumosDetalhe();
   if (nome === "lotes") carregarLotes();
   if (nome === "fermentos") carregarFermentos();
@@ -1524,6 +1527,231 @@ function alternarTipoFermentoProducao() {
   if (boxReuso) boxReuso.style.display = tipo === "REUSO" ? "block" : "none";
 }
 
+
+
+
+async function carregarCervejasDetalhe(force=false) {
+  if (state.loaded.cervejasDetalhe && !force) return;
+  await carregarBaseCadastros(true);
+
+  const sel = document.getElementById("extratoCervejaSelect");
+  sel.innerHTML = '<option value="">Selecionar cerveja...</option>';
+  state.cervejas.forEach(c => {
+    const op = document.createElement("option");
+    op.value = c.nome;
+    op.textContent = c.nome;
+    sel.appendChild(op);
+  });
+
+  const ate = document.getElementById("extratoCervejaAte");
+  const de = document.getElementById("extratoCervejaDe");
+
+  if (!ate.value) {
+    const hoje = new Date();
+    ate.value = hoje.toISOString().slice(0,10);
+  }
+
+  if (!de.value) {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 3);
+    de.value = d.toISOString().slice(0,10);
+  }
+
+  document.getElementById("extratoCervejaResumo").innerHTML = "";
+  document.getElementById("extratoCervejaMovimentos").innerHTML = '<div class="item"><span class="sub">Selecione uma cerveja e gere o extrato.</span></div>';
+  document.getElementById("extratoCervejaLotes").innerHTML = "";
+  document.getElementById("extratoCervejaEstoque").innerHTML = "";
+
+  state.loaded.cervejasDetalhe = true;
+}
+
+function mostrarSubExtratoCerveja(tipo) {
+  document.getElementById("subExtratoCervejaMovimentos").style.display = tipo === "movimentos" ? "block" : "none";
+  document.getElementById("subExtratoCervejaLotes").style.display = tipo === "lotes" ? "block" : "none";
+  document.getElementById("subExtratoCervejaEstoque").style.display = tipo === "estoque" ? "block" : "none";
+
+  document.querySelectorAll("#telaCervejasDetalhe .tab").forEach(t => t.classList.remove("active"));
+  const idx = tipo === "movimentos" ? 0 : tipo === "lotes" ? 1 : 2;
+  document.querySelectorAll("#telaCervejasDetalhe .tab")[idx].classList.add("active");
+}
+
+async function carregarExtratoCerveja() {
+  const cerveja = document.getElementById("extratoCervejaSelect").value;
+  const de = document.getElementById("extratoCervejaDe").value || "1900-01-01";
+  const ate = document.getElementById("extratoCervejaAte").value || "2999-12-31";
+
+  if (!cerveja) {
+    alert("Selecione a cerveja.");
+    return;
+  }
+
+  const ateFim = new Date(ate + "T00:00:00");
+  ateFim.setDate(ateFim.getDate() + 1);
+  const ateQuery = ateFim.toISOString().slice(0,10);
+
+  const [estoque, producoes, envases, saidas, movimentos] = await Promise.all([
+    sb.from("estoque_cerveja").select("*").eq("cerveja_nome", cerveja).order("origem"),
+    sb.from("producoes").select("*").eq("cerveja_nome", cerveja).gte("data_producao", de).lt("data_producao", ateQuery).order("data_producao", { ascending:false }),
+    sb.from("envases").select("*").eq("cerveja_nome", cerveja).gte("data_envase", de).lt("data_envase", ateQuery).order("data_envase", { ascending:false }),
+    sb.from("saidas").select("*").eq("cerveja_nome", cerveja).gte("data_saida", de).lt("data_saida", ateQuery).order("data_saida", { ascending:false }),
+    sb.from("movimentacoes").select("*").eq("item_nome", cerveja).gte("criado_em", de).lt("criado_em", ateQuery).order("criado_em", { ascending:false })
+  ]);
+
+  const estoqueRows = estoque.data || [];
+  const producoesRows = producoes.data || [];
+  const envaseRows = envases.data || [];
+  const saidaRows = saidas.data || [];
+  const movRows = movimentos.data || [];
+
+  const litrosEstoque = estoqueRows.reduce((s,r) => s + Number(r.litros || 0), 0);
+  const barrisEstoque = estoqueRows.reduce((s,r) => s + somaBarris(r.q10,r.q20,r.q30,r.q50), 0);
+  const litrosProduzidos = producoesRows.reduce((s,r) => s + Number(r.litros_produzidos || 0), 0);
+  const litrosEnvasados = envaseRows.reduce((s,r) => s + Number(r.litros_total || 0), 0);
+  const litrosSaidas = saidaRows.reduce((s,r) => s + Number(r.litros || 0), 0);
+
+  document.getElementById("extratoCervejaResumo").innerHTML = `
+    <div class="card"><span>Estoque atual</span><strong>${fmt(litrosEstoque)} L</strong><div class="sub">${barrisEstoque} barril(is)</div></div>
+    <div class="card"><span>Produzido no período</span><strong>${fmt(litrosProduzidos)} L</strong></div>
+    <div class="card"><span>Envasado no período</span><strong>${fmt(litrosEnvasados)} L</strong></div>
+    <div class="card"><span>Saídas no período</span><strong>${fmt(litrosSaidas)} L</strong></div>
+  `;
+
+  const eventos = [];
+
+  producoesRows.forEach(p => eventos.push({
+    data:p.data_producao,
+    tipo:"PRODUÇÃO",
+    detalhe:`Lote ${p.lote} • ${fmt(p.litros_produzidos)} L`,
+    qtd:Number(p.litros_produzidos || 0),
+    unidade:"L",
+    classe:"movEntrada",
+    ordem:new Date(p.data_producao + "T00:00:00").getTime()
+  }));
+
+  envaseRows.forEach(e => eventos.push({
+    data:e.data_envase,
+    tipo:"ENVASE",
+    detalhe:`Lote ${e.lote} • ${escapeHtml(e.origem)} • total ${fmt(e.litros_total)} L • barris ${fmt(e.litros_barris)} L`,
+    qtd:Number(e.litros_total || 0),
+    unidade:"L",
+    classe:"movEntrada",
+    ordem:new Date(e.data_envase + "T00:00:00").getTime()
+  }));
+
+  saidaRows.forEach(s => eventos.push({
+    data:s.data_saida,
+    tipo:"SAÍDA",
+    detalhe:`Cliente ${s.cliente_nome} • ${fmt(s.litros)} L • 10L=${s.q10 || 0} • 20L=${s.q20 || 0} • 30L=${s.q30 || 0} • 50L=${s.q50 || 0}`,
+    qtd:-Math.abs(Number(s.litros || 0)),
+    unidade:"L",
+    classe:"movSaida",
+    ordem:new Date(s.data_saida + "T00:00:00").getTime()
+  }));
+
+  movRows.forEach(m => {
+    if (["PRODUCAO","ENVASE","SAIDA ESTOQUE"].includes(m.tipo)) return;
+    eventos.push({
+      data:m.criado_em,
+      tipo:m.tipo,
+      detalhe:m.observacao || m.categoria || "",
+      qtd:Number(m.quantidade || 0),
+      unidade:m.unidade || "",
+      classe:Number(m.quantidade || 0) < 0 ? "movSaida" : Number(m.quantidade || 0) > 0 ? "movEntrada" : "movNeutro",
+      ordem:new Date(m.criado_em).getTime()
+    });
+  });
+
+  eventos.sort((a,b) => b.ordem - a.ordem);
+
+  const movBox = document.getElementById("extratoCervejaMovimentos");
+  movBox.innerHTML = eventos.length ? "" : '<div class="item"><span class="sub">Nenhum movimento no período.</span></div>';
+  eventos.forEach(e => {
+    movBox.insertAdjacentHTML("beforeend", `
+      <div class="item searchable">
+        <div>
+          <strong>${escapeHtml(e.tipo)}</strong>
+          <div class="sub">${e.data && String(e.data).includes("T") ? dataHoraBR(e.data) : dataBR(e.data)}</div>
+          <div class="sub">${e.detalhe}</div>
+        </div>
+        <span class="${e.classe}">${fmt(e.qtd,2)} ${escapeHtml(e.unidade)}</span>
+      </div>
+    `);
+  });
+
+  const lotesBox = document.getElementById("extratoCervejaLotes");
+  lotesBox.innerHTML = producoesRows.length ? "" : '<div class="item"><span class="sub">Nenhum lote no período.</span></div>';
+  producoesRows.forEach(p => {
+    const envLote = envaseRows.filter(e => e.lote === p.lote).reduce((s,e) => s + Number(e.litros_total || 0), 0);
+    const perda = Math.max(0, Number(p.litros_produzidos || 0) - envLote);
+    lotesBox.insertAdjacentHTML("beforeend", `
+      <div class="item searchable">
+        <div>
+          <strong>${escapeHtml(p.lote)}</strong>
+          <div class="sub">${dataBR(p.data_producao)} • ${escapeHtml(p.status || "-")} • Fermento ${escapeHtml(p.fermento_nome || "-")}</div>
+          <div class="sub">Produzido ${fmt(p.litros_produzidos)} L • Envasado ${fmt(envLote)} L • Perda ${fmt(perda)} L</div>
+        </div>
+        <span class="badge">${fmt(p.litros_produzidos)} L</span>
+      </div>
+    `);
+  });
+
+  const estoqueBox = document.getElementById("extratoCervejaEstoque");
+  estoqueBox.innerHTML = estoqueRows.length ? "" : '<div class="item"><span class="sub">Sem estoque para esta cerveja.</span></div>';
+  estoqueRows.forEach(r => {
+    estoqueBox.insertAdjacentHTML("beforeend", `
+      <div class="item">
+        <div>
+          <strong>${escapeHtml(r.origem)}</strong>
+          <div class="sub">10L=${r.q10 || 0} • 20L=${r.q20 || 0} • 30L=${r.q30 || 0} • 50L=${r.q50 || 0}</div>
+        </div>
+        <span class="badge">${fmt(r.litros)} L</span>
+      </div>
+    `);
+  });
+
+  state.ultimoExtratoCerveja = {
+    cerveja,
+    de,
+    ate,
+    estoqueRows,
+    producoesRows,
+    envaseRows,
+    saidaRows,
+    eventos,
+    resumo:{ litrosEstoque, barrisEstoque, litrosProduzidos, litrosEnvasados, litrosSaidas }
+  };
+}
+
+function exportarExtratoCervejaCsv() {
+  if (!state.ultimoExtratoCerveja) {
+    alert("Gere o extrato antes de exportar.");
+    return;
+  }
+
+  const r = state.ultimoExtratoCerveja;
+  const linhas = [];
+  linhas.push(["Extrato de cerveja", r.cerveja]);
+  linhas.push(["Período", r.de, r.ate]);
+  linhas.push([]);
+  linhas.push(["Resumo"]);
+  linhas.push(["Estoque atual L", r.resumo.litrosEstoque]);
+  linhas.push(["Barris estoque", r.resumo.barrisEstoque]);
+  linhas.push(["Produzido período L", r.resumo.litrosProduzidos]);
+  linhas.push(["Envasado período L", r.resumo.litrosEnvasados]);
+  linhas.push(["Saídas período L", r.resumo.litrosSaidas]);
+
+  linhas.push([]);
+  linhas.push(["Movimentos"]);
+  linhas.push(["Data","Tipo","Detalhe","Quantidade","Unidade"]);
+  r.eventos.forEach(e => linhas.push([e.data, e.tipo, String(e.detalhe).replace(/<[^>]*>/g,""), e.qtd, e.unidade]));
+
+  linhas.push([]);
+  linhas.push(["Estoque por origem"]);
+  linhas.push(["Origem","10L","20L","30L","50L","Litros"]);
+  r.estoqueRows.forEach(e => linhas.push([e.origem,e.q10,e.q20,e.q30,e.q50,e.litros]));
+
+  baixarCsv(`extrato-cerveja-${r.cerveja}.csv`, linhas);
+}
 
 
 function datasFiltroInsumos() {

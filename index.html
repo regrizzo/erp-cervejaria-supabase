@@ -39,7 +39,7 @@
     <header class="topbar">
       <div>
         <div class="appTitle">ERP Cervejaria</div>
-        <div class="appSub">Supabase • V13 fermento sem validade</div>
+        <div class="appSub">Supabase • V14 extrato cerveja</div>
       </div>
       <button class="btnGhost" onclick="logout()">Sair</button>
     </header>
@@ -397,6 +397,7 @@
         <div class="maisGrid">
           <div class="maisCard" onclick="mostrarTela('clientes')"><strong>👥 Clientes</strong><span>Cadastro e consulta</span></div>
           <div class="maisCard" onclick="mostrarTela('cadastros')"><strong>🗂️ Cadastros</strong><span>Cervejas e insumos</span></div>
+          <div class="maisCard" onclick="mostrarTela('cervejasDetalhe')"><strong>🍺 Cervejas</strong><span>Extrato, estoque e histórico</span></div>
           <div class="maisCard" onclick="mostrarTela('insumosDetalhe')"><strong>🌾 Insumos</strong><span>Compras e consumo</span></div>
           <div class="maisCard" onclick="mostrarTela('lotes')"><strong>🧪 Lotes</strong><span>Ficha completa e histórico</span></div>
           <div class="maisCard" onclick="mostrarTela('fermentos')"><strong>🧫 Fermentos</strong><span>Coleta, reuso e descarte</span></div>
@@ -407,6 +408,59 @@
           <div class="maisCard" onclick="mostrarTela('auditoria')"><strong>🧾 Auditoria</strong><span>Últimos lançamentos</span></div>
           <div class="maisCard" onclick="mostrarTela('configuracoes')"><strong>⚙️ Configurações</strong><span>Regras e parâmetros</span></div>
           <div class="maisCard" onclick="mostrarTela('backup')"><strong>💾 Backup</strong><span>Exportar dados em JSON</span></div>
+        </div>
+      </section>
+
+      <section id="telaCervejasDetalhe" class="tela">
+        <div class="sectionHeader">
+          <h2>Cervejas</h2>
+          <button class="btnSmall" onclick="carregarCervejasDetalhe(true)">Atualizar</button>
+        </div>
+
+        <div class="box">
+          <h3>Extrato por cerveja</h3>
+
+          <label>Cerveja</label>
+          <select id="extratoCervejaSelect"></select>
+
+          <div class="linha2">
+            <div>
+              <label>De</label>
+              <input id="extratoCervejaDe" type="date">
+            </div>
+            <div>
+              <label>Até</label>
+              <input id="extratoCervejaAte" type="date">
+            </div>
+          </div>
+
+          <div class="actionGrid">
+            <button class="btnMain" onclick="carregarExtratoCerveja()">Gerar extrato</button>
+            <button class="btnSecondary" onclick="exportarExtratoCervejaCsv()">Exportar CSV</button>
+          </div>
+        </div>
+
+        <div id="extratoCervejaResumo" class="gridCards"></div>
+
+        <div class="tabs">
+          <button class="tab active" onclick="mostrarSubExtratoCerveja('movimentos')">Movimentos</button>
+          <button class="tab" onclick="mostrarSubExtratoCerveja('lotes')">Lotes</button>
+          <button class="tab" onclick="mostrarSubExtratoCerveja('estoque')">Estoque</button>
+        </div>
+
+        <div id="subExtratoCervejaMovimentos">
+          <h3>Movimentos</h3>
+          <div id="extratoCervejaMovimentos" class="lista"></div>
+        </div>
+
+        <div id="subExtratoCervejaLotes" style="display:none;">
+          <h3>Lotes da cerveja</h3>
+          <div id="extratoCervejaLotes" class="lista"></div>
+        </div>
+
+        <div id="subExtratoCervejaEstoque" style="display:none;">
+          <h3>Estoque por origem</h3>
+          <div id="extratoCervejaEstoque" class="lista"></div>
         </div>
       </section>
 
