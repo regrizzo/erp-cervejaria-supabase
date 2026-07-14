@@ -1,4 +1,23 @@
 
+const APP_BUILD = "v19dash-cachefix-20260714";
+
+// Evita o celular/PWA segurar arquivos antigos do app.
+(function limparCacheAntigo() {
+  try {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistrations()
+        .then(regs => regs.forEach(reg => reg.unregister()))
+        .catch(() => {});
+    }
+    if (window.caches) {
+      caches.keys()
+        .then(keys => keys.forEach(k => caches.delete(k)))
+        .catch(() => {});
+    }
+  } catch (e) {}
+})();
+
+
 const SUPABASE_URL = "https://bwmkdalsupuzrsxdlrcm.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3bWtkYWxzdXB1enJzeGRscmNtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5ODY2MDYsImV4cCI6MjA5OTU2MjYwNn0.OJuCLFtIr5K9noT-w2jp0mW_SctmIMmv5mtfbSEc6ZE";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -196,68 +215,78 @@ function renderBarChart(id, dados, opts={}) {
   const box = document.getElementById(id);
   if (!box) return;
 
-  const suffix = opts.suffix || "";
-  const casas = opts.casas ?? 0;
-  const limite = opts.limite || 8;
-  const rows = [...(dados || [])]
-    .filter(d => Number(d.valor || 0) > 0)
-    .sort((a,b) => Number(b.valor || 0) - Number(a.valor || 0))
-    .slice(0, limite);
+  try {
+    const suffix = opts.suffix || "";
+    const casas = opts.casas === undefined ? 0 : opts.casas;
+    const limite = opts.limite || 8;
+    const rows = Array.from(dados || [])
+      .filter(d => Number(d.valor || 0) > 0)
+      .sort((a,b) => Number(b.valor || 0) - Number(a.valor || 0))
+      .slice(0, limite);
 
-  if (!rows.length) {
-    box.innerHTML = '<div class="emptyChart">Sem dados para exibir.</div>';
-    return;
+    if (!rows.length) {
+      box.innerHTML = '<div class="emptyChart">Sem dados para exibir.</div>';
+      return;
+    }
+
+    const max = Math.max.apply(null, rows.map(r => Number(r.valor || 0)).concat([1]));
+    box.innerHTML = "";
+    rows.forEach(r => {
+      const pct = Math.max(2, Math.round((Number(r.valor || 0) / max) * 100));
+      box.insertAdjacentHTML("beforeend", `
+        <div class="barRow">
+          <div class="barLabel" title="${escapeHtml(r.nome)}">${escapeHtml(r.nome)}</div>
+          <div class="barTrack"><div class="barFill" style="width:${pct}%"></div></div>
+          <div class="barValue">${fmt(r.valor, casas)}${suffix}</div>
+        </div>
+      `);
+    });
+  } catch (e) {
+    box.innerHTML = '<div class="emptyChart">Erro ao montar gráfico. Atualize a página.</div>';
+    console.error("Erro em renderBarChart", id, e);
   }
-
-  const max = Math.max(...rows.map(r => Number(r.valor || 0)), 1);
-  box.innerHTML = "";
-  rows.forEach(r => {
-    const pct = Math.max(2, Math.round((Number(r.valor || 0) / max) * 100));
-    box.insertAdjacentHTML("beforeend", `
-      <div class="barRow">
-        <div class="barLabel" title="${escapeHtml(r.nome)}">${escapeHtml(r.nome)}</div>
-        <div class="barTrack"><div class="barFill" style="width:${pct}%"></div></div>
-        <div class="barValue">${fmt(r.valor, casas)}${suffix}</div>
-      </div>
-    `);
-  });
 }
 
 function renderDonutOrigem(id, dados) {
   const box = document.getElementById(id);
   if (!box) return;
 
-  const cores = ["#0ea5e9","#22c55e","#f59e0b","#8b5cf6","#ef4444"];
-  const rows = [...(dados || [])].filter(d => Number(d.valor || 0) > 0);
-  const total = rows.reduce((s,r) => s + Number(r.valor || 0), 0);
+  try {
+    const cores = ["#0ea5e9","#22c55e","#f59e0b","#8b5cf6","#ef4444"];
+    const rows = Array.from(dados || []).filter(d => Number(d.valor || 0) > 0);
+    const total = rows.reduce((s,r) => s + Number(r.valor || 0), 0);
 
-  if (!rows.length || total <= 0) {
-    box.innerHTML = '<div class="emptyChart">Sem estoque por origem.</div>';
-    return;
+    if (!rows.length || total <= 0) {
+      box.innerHTML = '<div class="emptyChart">Sem estoque por origem.</div>';
+      return;
+    }
+
+    let grauAtual = 0;
+    const partes = rows.map((r, idx) => {
+      const graus = (Number(r.valor || 0) / total) * 360;
+      const ini = grauAtual;
+      const fim = grauAtual + graus;
+      grauAtual = fim;
+      return `${cores[idx % cores.length]} ${ini}deg ${fim}deg`;
+    }).join(",");
+
+    box.innerHTML = `
+      <div class="donut" style="background:conic-gradient(${partes})">
+        <div class="donutCenter">${fmt(total)} L</div>
+      </div>
+      <div class="legendList">
+        ${rows.map((r,idx) => `
+          <div class="legendItem">
+            <span><span class="legendDot" style="background:${cores[idx % cores.length]}"></span>${escapeHtml(r.nome)}</span>
+            <strong>${fmt(r.valor)} L</strong>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  } catch (e) {
+    box.innerHTML = '<div class="emptyChart">Erro ao montar gráfico. Atualize a página.</div>';
+    console.error("Erro em renderDonutOrigem", id, e);
   }
-
-  let grauAtual = 0;
-  const partes = rows.map((r, idx) => {
-    const graus = (Number(r.valor || 0) / total) * 360;
-    const ini = grauAtual;
-    const fim = grauAtual + graus;
-    grauAtual = fim;
-    return `${cores[idx % cores.length]} ${ini}deg ${fim}deg`;
-  }).join(",");
-
-  box.innerHTML = `
-    <div class="donut" style="background:conic-gradient(${partes})">
-      <div class="donutCenter">${fmt(total)} L</div>
-    </div>
-    <div class="legendList">
-      ${rows.map((r,idx) => `
-        <div class="legendItem">
-          <span><span class="legendDot" style="background:${cores[idx % cores.length]}"></span>${escapeHtml(r.nome)}</span>
-          <strong>${fmt(r.valor)} L</strong>
-        </div>
-      `).join("")}
-    </div>
-  `;
 }
 
 function mesesRecentes(qtd=6) {

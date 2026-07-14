@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>ERP Cervejaria Supabase</title>
 
-  <link rel="manifest" href="./manifest.json" />
+  <link rel="manifest" href="./manifest.json?v=v19dash-cachefix-20260714" />
   <link rel="icon" type="image/png" href="https://regrizzo.github.io/erp-cervejaria-icons/icon-192.png" />
   <link rel="apple-touch-icon" href="https://regrizzo.github.io/erp-cervejaria-icons/apple-touch-icon-180.png" />
   <meta name="theme-color" content="#0c2949" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
 
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./styles.css?v=v19dash-cachefix-20260714" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
@@ -39,7 +39,7 @@
     <header class="topbar">
       <div>
         <div class="appTitle">ERP Cervejaria</div>
-        <div class="appSub">Supabase • V19 Dashboard completo</div>
+        <div class="appSub">Supabase • V19 Dashboard completo • cachefix</div>
       </div>
       <button class="btnGhost" onclick="logout()">Sair</button>
     </header>
@@ -72,7 +72,7 @@
               <h3>Estoque por cerveja</h3>
               <span id="dashTotalCervejas" class="miniBadge">0 itens</span>
             </div>
-            <div id="graficoEstoqueCerveja" class="barChart"></div>
+            <div id="graficoEstoqueCerveja" class="barChart"><div class="emptyChart">Carregando gráfico...</div></div>
           </div>
 
           <div class="dashBox">
@@ -80,7 +80,7 @@
               <h3>Estoque por origem</h3>
               <span class="miniBadge">Litros</span>
             </div>
-            <div id="graficoEstoqueOrigem" class="donutWrap"></div>
+            <div id="graficoEstoqueOrigem" class="donutWrap"><div class="emptyChart">Carregando gráfico...</div></div>
           </div>
 
           <div class="dashBox">
@@ -88,7 +88,7 @@
               <h3>Produção por mês</h3>
               <span class="miniBadge">Últimos 6 meses</span>
             </div>
-            <div id="graficoProducaoMes" class="barChart"></div>
+            <div id="graficoProducaoMes" class="barChart"><div class="emptyChart">Carregando gráfico...</div></div>
           </div>
 
           <div class="dashBox">
@@ -96,7 +96,7 @@
               <h3>Envase por mês</h3>
               <span class="miniBadge">Últimos 6 meses</span>
             </div>
-            <div id="graficoEnvaseMes" class="barChart"></div>
+            <div id="graficoEnvaseMes" class="barChart"><div class="emptyChart">Carregando gráfico...</div></div>
           </div>
 
           <div class="dashBox">
@@ -104,7 +104,7 @@
               <h3>Saídas por cerveja</h3>
               <span class="miniBadge">Últimas saídas</span>
             </div>
-            <div id="graficoSaidasCerveja" class="barChart"></div>
+            <div id="graficoSaidasCerveja" class="barChart"><div class="emptyChart">Carregando gráfico...</div></div>
           </div>
 
           <div class="dashBox">
@@ -112,7 +112,7 @@
               <h3>Insumos</h3>
               <span id="dashInsumosBaixos" class="miniBadge">0 baixo(s)</span>
             </div>
-            <div id="graficoInsumos" class="barChart"></div>
+            <div id="graficoInsumos" class="barChart"><div class="emptyChart">Carregando gráfico...</div></div>
           </div>
         </div>
 
@@ -122,7 +122,7 @@
               <h3>Alertas ativos</h3>
               <span id="dashQtdAlertas" class="miniBadge">0</span>
             </div>
-            <div id="dashboardAlertas" class="lista compactList"></div>
+            <div id="dashboardAlertas" class="lista compactList"><div class="item"><span class="sub">Carregando...</span></div></div>
           </div>
 
           <div class="dashBox">
@@ -130,7 +130,7 @@
               <h3>Barris em clientes</h3>
               <span class="miniBadge">Acompanhamento</span>
             </div>
-            <div id="dashboardBarrisClientes" class="lista compactList"></div>
+            <div id="dashboardBarrisClientes" class="lista compactList"><div class="item"><span class="sub">Carregando...</span></div></div>
           </div>
 
           <div class="dashBox">
@@ -138,7 +138,7 @@
               <h3>Lotes fermentando</h3>
               <span class="miniBadge">Produção</span>
             </div>
-            <div id="dashboardLotesFermentando" class="lista compactList"></div>
+            <div id="dashboardLotesFermentando" class="lista compactList"><div class="item"><span class="sub">Carregando...</span></div></div>
           </div>
 
           <div class="dashBox">
@@ -146,7 +146,7 @@
               <h3>Últimas movimentações</h3>
               <span class="miniBadge">Histórico</span>
             </div>
-            <div id="inicioMovimentacoes" class="lista compactList"></div>
+            <div id="inicioMovimentacoes" class="lista compactList"><div class="item"><span class="sub">Carregando...</span></div></div>
           </div>
         </div>
       </section>
@@ -890,6 +890,6 @@
     </nav>
   </div>
 
-  <script src="./app.js"></script>
+  <script src="./app.js?v=v19dash-cachefix-20260714"></script>
 </body>
 </html>
