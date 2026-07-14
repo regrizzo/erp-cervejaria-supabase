@@ -91,6 +91,9 @@ function toggleForm(id) {
     if (id === "formEnvase") prepararFormEnvase();
     if (id === "formEntradaCerveja") prepararFormEntradaCerveja();
     if (id === "formEntradaInsumo") prepararFormEntradaInsumo();
+    if (id === "formAjusteCerveja") prepararFormAjusteCerveja();
+    if (id === "formAjusteInsumo") prepararFormAjusteInsumo();
+    if (id === "formSaida") prepararFormSaida();
   }
 }
 
@@ -1095,6 +1098,440 @@ async function salvarInsumo() {
   await carregarBaseCadastros(true);
   carregarCadastros(true);
 }
+
+
+function prepararFormAjusteCerveja() {
+  prepararSelectCervejas("ajusteCerveja");
+}
+
+function prepararFormAjusteInsumo() {
+  popularAjusteInsumos();
+}
+
+function popularAjusteInsumos() {
+  const tipo = document.getElementById("ajusteInsumoTipo").value;
+  const sel = document.getElementById("ajusteInsumoNome");
+  sel.innerHTML = '<option value="">Selecionar insumo...</option>';
+  state.insumos.filter(i => i.tipo === tipo).forEach(i => {
+    const op = document.createElement("option");
+    op.value = i.nome;
+    op.textContent = `${i.nome} (${i.unidade})`;
+    op.dataset.unidade = i.unidade;
+    sel.appendChild(op);
+  });
+}
+
+async function salvarAjusteCerveja() {
+  mostrarErro("ajusteCervejaErro", "");
+  const cerveja_nome = document.getElementById("ajusteCerveja").value;
+  const origem = document.getElementById("ajusteCervejaOrigem").value;
+  const q10 = Number(document.getElementById("ajusteCervQ10").value || 0);
+  const q20 = Number(document.getElementById("ajusteCervQ20").value || 0);
+  const q30 = Number(document.getElementById("ajusteCervQ30").value || 0);
+  const q50 = Number(document.getElementById("ajusteCervQ50").value || 0);
+  const motivo = document.getElementById("ajusteCervejaMotivo").value.trim();
+  const responsavel = document.getElementById("ajusteCervejaResp").value.trim();
+
+  if (!cerveja_nome) {
+    mostrarErro("ajusteCervejaErro", "Selecione a cerveja.");
+    return;
+  }
+
+  const { data: rows, error: buscaErro } = await sb.from("estoque_cerveja")
+    .select("*")
+    .eq("cerveja_nome", cerveja_nome)
+    .eq("origem", origem)
+    .limit(1);
+
+  if (buscaErro) {
+    mostrarErro("ajusteCervejaErro", buscaErro.message);
+    return;
+  }
+
+  const atual = rows && rows[0] ? rows[0] : null;
+  const litrosAnterior = Number(atual?.litros || 0);
+  const litrosNovo = litrosBarris(q10,q20,q30,q50);
+  const cerveja = state.cervejas.find(c => c.nome === cerveja_nome);
+
+  const { error } = await sb.from("estoque_cerveja").upsert({
+    cerveja_id: cerveja ? cerveja.id : null,
+    cerveja_nome,
+    origem,
+    q10, q20, q30, q50,
+    litros: litrosNovo,
+    atualizado_em: new Date().toISOString()
+  }, { onConflict:"cerveja_nome,origem" });
+
+  if (error) {
+    mostrarErro("ajusteCervejaErro", error.message);
+    return;
+  }
+
+  await sb.from("ajustes_estoque").insert({
+    categoria:"CERVEJA",
+    item_nome: cerveja_nome,
+    tipo_ou_origem: origem,
+    quantidade_anterior: litrosAnterior,
+    quantidade_nova: litrosNovo,
+    diferenca: litrosNovo - litrosAnterior,
+    motivo,
+    responsavel
+  });
+
+  await sb.from("movimentacoes").insert({
+    tipo:"AJUSTE ESTOQUE",
+    categoria:"CERVEJA",
+    item_nome: cerveja_nome,
+    quantidade: litrosNovo - litrosAnterior,
+    unidade:"L",
+    origem,
+    observacao: motivo,
+    responsavel
+  });
+
+  ["ajusteCervQ10","ajusteCervQ20","ajusteCervQ30","ajusteCervQ50"].forEach(id => document.getElementById(id).value = "0");
+  ["ajusteCervejaMotivo","ajusteCervejaResp"].forEach(id => document.getElementById(id).value = "");
+  invalidar("estoque","inicio");
+  alert("Ajuste de cerveja salvo.");
+  carregarEstoque(true);
+  carregarInicio(true);
+}
+
+async function salvarAjusteInsumo() {
+  mostrarErro("ajusteInsumoErro", "");
+  const tipo = document.getElementById("ajusteInsumoTipo").value;
+  const nome = document.getElementById("ajusteInsumoNome").value;
+  const quantidadeNova = Number(document.getElementById("ajusteInsumoQtd").value || 0);
+  const motivo = document.getElementById("ajusteInsumoMotivo").value.trim();
+  const responsavel = document.getElementById("ajusteInsumoResp").value.trim();
+
+  if (!nome) {
+    mostrarErro("ajusteInsumoErro", "Selecione o insumo.");
+    return;
+  }
+
+  const insumo = state.insumos.find(i => i.tipo === tipo && i.nome === nome);
+  const unidade = insumo ? insumo.unidade : unidadePadrao(tipo);
+
+  const { data: rows, error: buscaErro } = await sb.from("estoque_insumos")
+    .select("*")
+    .eq("tipo", tipo)
+    .eq("nome", nome)
+    .limit(1);
+
+  if (buscaErro) {
+    mostrarErro("ajusteInsumoErro", buscaErro.message);
+    return;
+  }
+
+  const atual = rows && rows[0] ? rows[0] : null;
+  const quantidadeAnterior = Number(atual?.quantidade || 0);
+
+  const { error } = await sb.from("estoque_insumos").upsert({
+    insumo_id: insumo ? insumo.id : null,
+    tipo,
+    nome,
+    unidade,
+    quantidade: quantidadeNova,
+    atualizado_em: new Date().toISOString()
+  }, { onConflict:"tipo,nome" });
+
+  if (error) {
+    mostrarErro("ajusteInsumoErro", error.message);
+    return;
+  }
+
+  await sb.from("ajustes_estoque").insert({
+    categoria:"INSUMO",
+    item_nome: nome,
+    tipo_ou_origem: tipo,
+    quantidade_anterior: quantidadeAnterior,
+    quantidade_nova: quantidadeNova,
+    diferenca: quantidadeNova - quantidadeAnterior,
+    motivo,
+    responsavel
+  });
+
+  await sb.from("movimentacoes").insert({
+    tipo:"AJUSTE ESTOQUE",
+    categoria:"INSUMO",
+    item_nome: nome,
+    quantidade: quantidadeNova - quantidadeAnterior,
+    unidade,
+    observacao: motivo,
+    responsavel
+  });
+
+  ["ajusteInsumoQtd","ajusteInsumoMotivo","ajusteInsumoResp"].forEach(id => document.getElementById(id).value = "");
+  invalidar("estoque","inicio");
+  alert("Ajuste de insumo salvo.");
+  carregarEstoque(true);
+  carregarInicio(true);
+}
+
+async function prepararFormSaida() {
+  await carregarBaseCadastros();
+  prepararSelectClientes("saidaCliente");
+  document.getElementById("saidaItens").innerHTML = "";
+  adicionarItemSaida();
+}
+
+function prepararSelectClientes(id) {
+  const sel = document.getElementById(id);
+  sel.innerHTML = '<option value="">Selecionar cliente...</option>';
+  state.clientes.forEach(c => {
+    const op = document.createElement("option");
+    op.value = c.id;
+    op.textContent = c.estabelecimento ? `${c.nome} — ${c.estabelecimento}` : c.nome;
+    op.dataset.nome = c.nome;
+    sel.appendChild(op);
+  });
+}
+
+function adicionarItemSaida() {
+  const container = document.getElementById("saidaItens");
+  const idx = container.querySelectorAll(".saidaItem").length + 1;
+
+  const div = document.createElement("div");
+  div.className = "saidaItem";
+  div.innerHTML = `
+    <div class="saidaItemHeader">
+      <strong>Item ${idx}</strong>
+      <button type="button" class="smallDanger" onclick="this.closest('.saidaItem').remove()">Remover</button>
+    </div>
+
+    <label>Cerveja</label>
+    <select class="saidaItemCerveja"></select>
+
+    <div class="linha2">
+      <div><label>Barris 10L</label><input class="saidaItemQ10" type="number" min="0" value="0"></div>
+      <div><label>Barris 20L</label><input class="saidaItemQ20" type="number" min="0" value="0"></div>
+    </div>
+    <div class="linha2">
+      <div><label>Barris 30L</label><input class="saidaItemQ30" type="number" min="0" value="0"></div>
+      <div><label>Barris 50L</label><input class="saidaItemQ50" type="number" min="0" value="0"></div>
+    </div>
+
+    <label>Códigos dos barris</label>
+    <input class="saidaItemCodigos" placeholder="Ex: BR30-01, BR50-03 ou SEM ETIQUETA">
+  `;
+
+  container.appendChild(div);
+
+  const sel = div.querySelector(".saidaItemCerveja");
+  sel.innerHTML = '<option value="">Selecionar cerveja...</option>';
+  state.cervejas.forEach(c => {
+    const op = document.createElement("option");
+    op.value = c.nome;
+    op.textContent = c.nome;
+    sel.appendChild(op);
+  });
+}
+
+function coletarItensSaida() {
+  const itens = [];
+  document.querySelectorAll("#saidaItens .saidaItem").forEach(div => {
+    const cerveja_nome = div.querySelector(".saidaItemCerveja").value;
+    const q10 = Number(div.querySelector(".saidaItemQ10").value || 0);
+    const q20 = Number(div.querySelector(".saidaItemQ20").value || 0);
+    const q30 = Number(div.querySelector(".saidaItemQ30").value || 0);
+    const q50 = Number(div.querySelector(".saidaItemQ50").value || 0);
+    const codigos = div.querySelector(".saidaItemCodigos").value.trim();
+
+    if (cerveja_nome && somaBarris(q10,q20,q30,q50) > 0) {
+      itens.push({ cerveja_nome, q10, q20, q30, q50, codigos_barris: codigos });
+    }
+  });
+  return itens;
+}
+
+async function simularBaixaCerveja(cerveja_nome, q10, q20, q30, q50) {
+  const { data, error } = await sb.from("estoque_cerveja")
+    .select("*")
+    .eq("cerveja_nome", cerveja_nome)
+    .in("origem", ["PRODUCAO","ITAPEMA","PHENOMENA"]);
+
+  if (error) throw error;
+
+  const ordem = ["PRODUCAO","ITAPEMA","PHENOMENA"];
+  const rows = ordem.map(origem => (data || []).find(r => r.origem === origem) || {
+    cerveja_nome,
+    origem,
+    q10:0, q20:0, q30:0, q50:0,
+    litros:0
+  });
+
+  const pedidos = [
+    ["q10", q10, 10, "10L"],
+    ["q20", q20, 20, "20L"],
+    ["q30", q30, 30, "30L"],
+    ["q50", q50, 50, "50L"]
+  ];
+
+  const updates = new Map();
+  const baixas = [];
+  const faltas = [];
+
+  rows.forEach(r => updates.set(r.origem, { ...r }));
+
+  for (const [campo, qtdPedida, litrosPorBarril, label] of pedidos) {
+    let restante = Number(qtdPedida || 0);
+    if (restante <= 0) continue;
+
+    for (const origem of ordem) {
+      if (restante <= 0) break;
+      const u = updates.get(origem);
+      const disponivel = Number(u[campo] || 0);
+      const usar = Math.min(disponivel, restante);
+      if (usar > 0) {
+        u[campo] = disponivel - usar;
+        restante -= usar;
+
+        baixas.push({
+          origem,
+          campo,
+          label,
+          quantidade: usar,
+          litros: usar * litrosPorBarril
+        });
+      }
+    }
+
+    if (restante > 0) {
+      const disponivelTotal = rows.reduce((s,r) => s + Number(r[campo] || 0), 0);
+      faltas.push(`${cerveja_nome} ${label}: solicitado ${qtdPedida}, disponível ${disponivelTotal}, falta ${restante}`);
+    }
+  }
+
+  if (faltas.length) {
+    throw new Error("Estoque insuficiente:\n" + faltas.join("\n"));
+  }
+
+  const updatesArr = [...updates.values()].map(u => ({
+    ...u,
+    litros: litrosBarris(u.q10,u.q20,u.q30,u.q50),
+    atualizado_em: new Date().toISOString()
+  }));
+
+  const resumoPorOrigem = {};
+  baixas.forEach(b => resumoPorOrigem[b.origem] = (resumoPorOrigem[b.origem] || 0) + b.litros);
+
+  return { updates: updatesArr, baixas, resumoPorOrigem };
+}
+
+async function salvarSaidaMultipla() {
+  mostrarErro("saidaErro", "");
+  await carregarBaseCadastros();
+
+  const clienteId = document.getElementById("saidaCliente").value;
+  const clienteOp = document.getElementById("saidaCliente").options[document.getElementById("saidaCliente").selectedIndex];
+  const cliente_nome = clienteOp ? (clienteOp.dataset.nome || clienteOp.textContent) : "";
+  const responsavel = document.getElementById("saidaResponsavel").value.trim();
+  const observacao = document.getElementById("saidaObs").value.trim();
+  const itens = coletarItensSaida();
+
+  if (!clienteId || !cliente_nome) {
+    mostrarErro("saidaErro", "Selecione o cliente.");
+    return;
+  }
+
+  if (!itens.length) {
+    mostrarErro("saidaErro", "Adicione pelo menos uma cerveja com quantidade.");
+    return;
+  }
+
+  const simulacoes = [];
+  try {
+    for (const item of itens) {
+      const sim = await simularBaixaCerveja(item.cerveja_nome, item.q10, item.q20, item.q30, item.q50);
+      simulacoes.push({ item, sim });
+    }
+  } catch(e) {
+    mostrarErro("saidaErro", e.message);
+    return;
+  }
+
+  let resumo = `Cliente: ${cliente_nome}\n\n`;
+  simulacoes.forEach(({ item, sim }) => {
+    resumo += `${item.cerveja_nome} — ${fmt(litrosBarris(item.q10,item.q20,item.q30,item.q50))} L\n`;
+    resumo += `Barris: 10L=${item.q10}, 20L=${item.q20}, 30L=${item.q30}, 50L=${item.q50}\n`;
+    resumo += `Baixa automática: ${Object.entries(sim.resumoPorOrigem).map(([o,l]) => `${o}: ${fmt(l)}L`).join(" • ")}\n`;
+    if (item.codigos_barris) resumo += `Códigos: ${item.codigos_barris}\n`;
+    resumo += "\n";
+  });
+  resumo += "Confirmar saída?";
+
+  if (!confirm(resumo)) return;
+
+  const grupo_saida = crypto.randomUUID();
+
+  try {
+    for (const { item, sim } of simulacoes) {
+      for (const u of sim.updates) {
+        const cerveja = state.cervejas.find(c => c.nome === item.cerveja_nome);
+        await sb.from("estoque_cerveja").upsert({
+          cerveja_id: cerveja ? cerveja.id : null,
+          cerveja_nome: item.cerveja_nome,
+          origem: u.origem,
+          q10: Number(u.q10 || 0),
+          q20: Number(u.q20 || 0),
+          q30: Number(u.q30 || 0),
+          q50: Number(u.q50 || 0),
+          litros: Number(u.litros || 0),
+          atualizado_em: new Date().toISOString()
+        }, { onConflict:"cerveja_nome,origem" });
+      }
+
+      const litros = litrosBarris(item.q10,item.q20,item.q30,item.q50);
+      const origem_baixada = Object.entries(sim.resumoPorOrigem).map(([o,l]) => `${o}: ${fmt(l)}L`).join(" | ");
+      const cerveja = state.cervejas.find(c => c.nome === item.cerveja_nome);
+
+      const { error: saidaErro } = await sb.from("saidas").insert({
+        grupo_saida,
+        cliente_id: clienteId,
+        cliente_nome,
+        cerveja_id: cerveja ? cerveja.id : null,
+        cerveja_nome: item.cerveja_nome,
+        q10:item.q10,
+        q20:item.q20,
+        q30:item.q30,
+        q50:item.q50,
+        litros,
+        codigos_barris: item.codigos_barris,
+        origem_baixada,
+        responsavel,
+        observacao
+      });
+
+      if (saidaErro) throw saidaErro;
+
+      await sb.from("movimentacoes").insert({
+        tipo:"SAIDA ESTOQUE",
+        categoria:"CERVEJA",
+        item_nome: item.cerveja_nome,
+        quantidade: -Math.abs(litros),
+        unidade:"L",
+        destino: cliente_nome,
+        cliente_nome,
+        observacao: `${origem_baixada}${observacao ? " — " + observacao : ""}`,
+        responsavel
+      });
+    }
+  } catch(e) {
+    mostrarErro("saidaErro", "Erro ao salvar saída: " + e.message);
+    return;
+  }
+
+  document.getElementById("saidaResponsavel").value = "";
+  document.getElementById("saidaObs").value = "";
+  document.getElementById("saidaItens").innerHTML = "";
+  adicionarItemSaida();
+  invalidar("saidas","estoque","inicio");
+  alert("Saída registrada com baixa automática do estoque.");
+  carregarSaidas(true);
+  carregarInicio(true);
+}
+
 
 function filtrarLista(containerId, texto) {
   const q = String(texto || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");

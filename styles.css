@@ -76,3 +76,10 @@ h3 { margin:18px 0 10px; }
 [hidden-by-filter="true"] { display:none !important; }
 @media (min-width:560px){ .actionGrid { grid-template-columns:1fr 1fr 1fr; } }
 @media (max-width:380px){ .gridCards { gap:9px; } .card { padding:13px; } .card strong { font-size:21px; } }
+
+.btnWarn { background:#f59e0b; color:#111827; width:100%; margin-bottom:10px; }
+.saidaItem { background:#f8fafc; border:1px solid var(--border); border-radius:16px; padding:12px; margin-bottom:12px; }
+.saidaItemHeader { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px; }
+.saidaItemHeader strong { font-size:14px; }
+.smallDanger { background:#ef4444; padding:8px 10px; border-radius:10px; font-size:12px; }
+.resumoConfirmacao { white-space:pre-line; line-height:1.45; }

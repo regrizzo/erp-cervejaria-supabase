@@ -177,6 +177,8 @@
         <div class="actionGrid">
           <button class="btnMain" onclick="toggleForm('formEntradaCerveja')">+ Entrada cerveja</button>
           <button class="btnSecondary" onclick="toggleForm('formEntradaInsumo')">+ Compra insumo</button>
+          <button class="btnWarn" onclick="toggleForm('formAjusteCerveja')">🛠️ Ajustar cerveja</button>
+          <button class="btnWarn" onclick="toggleForm('formAjusteInsumo')">⚖️ Ajustar insumo</button>
         </div>
 
         <div id="formEntradaCerveja" class="formBox" style="display:none;">
@@ -242,6 +244,66 @@
           <div id="entradaInsumoErro" class="erro"></div>
         </div>
 
+        <div id="formAjusteCerveja" class="formBox" style="display:none;">
+          <h3>Ajustar estoque de cerveja</h3>
+          <p class="muted">Use quando a contagem real for diferente do sistema. O sistema grava o histórico do ajuste.</p>
+
+          <label>Cerveja</label>
+          <select id="ajusteCerveja"></select>
+
+          <label>Origem</label>
+          <select id="ajusteCervejaOrigem">
+            <option value="PRODUCAO">PRODUÇÃO</option>
+            <option value="ITAPEMA">ITAPEMA</option>
+            <option value="PHENOMENA">PHENOMENA</option>
+          </select>
+
+          <div class="linha2">
+            <div><label>Real 10L</label><input id="ajusteCervQ10" type="number" min="0" value="0"></div>
+            <div><label>Real 20L</label><input id="ajusteCervQ20" type="number" min="0" value="0"></div>
+          </div>
+          <div class="linha2">
+            <div><label>Real 30L</label><input id="ajusteCervQ30" type="number" min="0" value="0"></div>
+            <div><label>Real 50L</label><input id="ajusteCervQ50" type="number" min="0" value="0"></div>
+          </div>
+
+          <label>Motivo</label>
+          <textarea id="ajusteCervejaMotivo" placeholder="Ex: conferência física, erro de lançamento..."></textarea>
+
+          <label>Responsável</label>
+          <input id="ajusteCervejaResp" placeholder="Quem conferiu">
+
+          <button onclick="salvarAjusteCerveja()">Salvar ajuste de cerveja</button>
+          <div id="ajusteCervejaErro" class="erro"></div>
+        </div>
+
+        <div id="formAjusteInsumo" class="formBox" style="display:none;">
+          <h3>Ajustar estoque de insumo</h3>
+          <p class="muted">Informe a quantidade real encontrada no estoque.</p>
+
+          <label>Tipo</label>
+          <select id="ajusteInsumoTipo" onchange="popularAjusteInsumos()">
+            <option value="MALTE">Malte</option>
+            <option value="LUPULO">Lúpulo</option>
+            <option value="FERMENTO">Fermento</option>
+          </select>
+
+          <label>Insumo</label>
+          <select id="ajusteInsumoNome"></select>
+
+          <label>Quantidade real</label>
+          <input id="ajusteInsumoQtd" type="number" min="0" step="0.001">
+
+          <label>Motivo</label>
+          <textarea id="ajusteInsumoMotivo" placeholder="Ex: conferência física, divergência na compra..."></textarea>
+
+          <label>Responsável</label>
+          <input id="ajusteInsumoResp" placeholder="Quem conferiu">
+
+          <button onclick="salvarAjusteInsumo()">Salvar ajuste de insumo</button>
+          <div id="ajusteInsumoErro" class="erro"></div>
+        </div>
+
         <div class="tabs">
           <button class="tab active" onclick="mostrarSubEstoque('cervejas')">Cervejas</button>
           <button class="tab" onclick="mostrarSubEstoque('insumos')">Insumos</button>
@@ -266,13 +328,30 @@
           <button class="btnSmall" onclick="carregarSaidas(true)">Atualizar</button>
         </div>
 
-        <div class="box">
-          <p class="muted">
-            A saída múltipla completa será migrada na próxima etapa. Nesta V2, esta tela consulta as últimas saídas já existentes no banco.
-          </p>
+        <button class="btnMain" onclick="toggleForm('formSaida')">+ Registrar saída</button>
+
+        <div id="formSaida" class="formBox" style="display:none;">
+          <h3>Saída múltipla</h3>
+
+          <label>Cliente</label>
+          <select id="saidaCliente"></select>
+
+          <label>Responsável</label>
+          <input id="saidaResponsavel" placeholder="Quem lançou">
+
+          <div class="infoBox">Itens da saída</div>
+          <div id="saidaItens"></div>
+          <button type="button" class="btnMini" onclick="adicionarItemSaida()">+ Adicionar outra cerveja</button>
+
+          <label>Observação geral</label>
+          <textarea id="saidaObs"></textarea>
+
+          <button onclick="salvarSaidaMultipla()">Conferir e registrar saída</button>
+          <div id="saidaErro" class="erro"></div>
         </div>
 
         <h3>Últimas saídas</h3>
+        <input class="search" placeholder="Buscar saída..." oninput="filtrarLista('listaSaidas', this.value)">
         <div id="listaSaidas" class="lista"></div>
       </section>
 
