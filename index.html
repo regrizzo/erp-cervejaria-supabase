@@ -39,7 +39,7 @@
     <header class="topbar">
       <div>
         <div class="appTitle">ERP Cervejaria</div>
-        <div class="appSub">Supabase • V9 alertas</div>
+        <div class="appSub">Supabase • V10 cadastros e extratos</div>
       </div>
       <button class="btnGhost" onclick="logout()">Sair</button>
     </header>
@@ -62,11 +62,8 @@
         </div>
 
         <div class="box">
-          <h3>O que já está migrado nesta V2</h3>
-          <div class="muted">
-            Cadastros, clientes, produção com insumos, dry hopping, envase, entrada de estoque de cerveja e compra de insumos.
-            Saída múltipla e fermento reutilizável serão a próxima etapa.
-          </div>
+          <h3>Últimas movimentações</h3>
+          <div id="inicioMovimentacoes" class="lista"></div>
         </div>
       </section>
 
@@ -319,6 +316,11 @@
 
           <button onclick="salvarAjusteInsumo()">Salvar ajuste de insumo</button>
           <div id="ajusteInsumoErro" class="erro"></div>
+        </div>
+
+        <div class="box">
+          <h3>Resumo por origem</h3>
+          <div id="resumoEstoqueOrigem" class="gridCards"></div>
         </div>
 
         <div class="tabs">
@@ -649,9 +651,13 @@
           <button class="btnSmall" onclick="carregarClientes(true)">Atualizar</button>
         </div>
 
-        <button class="btnMain" onclick="toggleForm('formCliente')">+ Novo Cliente</button>
+        <div class="actionGrid">
+          <button class="btnMain" onclick="novoCliente()">+ Novo Cliente</button>
+          <button class="btnSecondary" onclick="toggleForm('formExtratoCliente')">📋 Extrato cliente</button>
+        </div>
 
         <div id="formCliente" class="formBox" style="display:none;">
+          <input id="cliId" type="hidden">
           <label>Nome / Razão social</label>
           <input id="cliNome">
 
@@ -671,6 +677,14 @@
           <div id="cliErro" class="erro"></div>
         </div>
 
+        <div id="formExtratoCliente" class="formBox" style="display:none;">
+          <h3>Extrato de cliente</h3>
+          <label>Cliente</label>
+          <select id="extratoCliente"></select>
+          <button onclick="carregarExtratoCliente()">Gerar extrato</button>
+          <div id="extratoClienteConteudo" class="lista" style="margin-top:12px;"></div>
+        </div>
+
         <input class="search" placeholder="Buscar cliente..." oninput="filtrarLista('listaClientes', this.value)">
         <div id="listaClientes" class="lista"></div>
       </section>
@@ -681,10 +695,11 @@
           <button class="btnSmall" onclick="carregarCadastros(true)">Atualizar</button>
         </div>
 
-        <button class="btnMain" onclick="toggleForm('formCerveja')">+ Cerveja</button>
-        <button class="btnSecondary" onclick="toggleForm('formInsumo')">+ Insumo</button>
+        <button class="btnMain" onclick="novaCerveja()">+ Cerveja</button>
+        <button class="btnSecondary" onclick="novoInsumo()">+ Insumo</button>
 
         <div id="formCerveja" class="formBox" style="display:none;">
+          <input id="cadCervejaId" type="hidden">
           <label>Nome da cerveja</label>
           <input id="cadCervejaNome">
           <label>Estilo</label>
@@ -696,6 +711,7 @@
         </div>
 
         <div id="formInsumo" class="formBox" style="display:none;">
+          <input id="cadInsumoId" type="hidden">
           <label>Tipo</label>
           <select id="cadInsumoTipo" onchange="ajustarUnidade()">
             <option value="MALTE">Malte</option>
