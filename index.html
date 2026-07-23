@@ -34,7 +34,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
 
-  <link rel="stylesheet" href="./styles.css?v=previa-whatsapp-20260714" />
+  <link rel="stylesheet" href="./styles.css?v=barril-incompleto-20260723" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
@@ -350,7 +350,20 @@
 
           <label>Litros no último barril incompleto</label>
           <input id="envaseIncompleto" type="number" min="0" step="0.01" value="0" oninput="atualizarResumoEnvase()">
-          <div class="sub">Conta no envase, mas não entra nos barris disponíveis do estoque.</div>
+          <div class="sub">Entra no estoque como barril incompleto, usando o volume real informado.</div>
+
+          <label>Tamanho do último barril incompleto</label>
+          <select id="envaseIncompletoTamanho" onchange="atualizarResumoEnvase()">
+            <option value="">Selecionar tamanho...</option>
+            <option value="10">Barril de 10 L</option>
+            <option value="20">Barril de 20 L</option>
+            <option value="30">Barril de 30 L</option>
+            <option value="50">Barril de 50 L</option>
+          </select>
+
+          <label>Código do último barril incompleto (opcional)</label>
+          <input id="envaseIncompletoCodigo" placeholder="Ex: BR30-07" oninput="atualizarResumoEnvase()">
+          <div class="sub">O código pode ficar em branco. O tamanho é obrigatório quando houver litros neste barril.</div>
 
           <label>Outros litros destinados ao bar próprio</label>
           <input id="envaseBarProprio" type="number" min="0" step="0.01" value="0" oninput="atualizarResumoEnvase()">
@@ -1210,6 +1223,6 @@
     </nav>
   </div>
 
-  <script src="./app.js?v=previa-whatsapp-20260714"></script>
+  <script src="./app.js?v=barril-incompleto-20260723"></script>
 </body>
 </html>

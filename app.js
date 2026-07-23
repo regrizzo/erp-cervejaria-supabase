@@ -1,5 +1,5 @@
 
-const APP_BUILD = "logo-original-cervejaria-da-lagoa-20260714";
+const APP_BUILD = "barril-incompleto-20260723";
 
 // Evita o celular/PWA segurar arquivos antigos do app.
 (function limparCacheAntigo() {
@@ -29,6 +29,7 @@ const state = {
   clientes: [],
   producoesFermentando: [],
   fermentosReuso: [],
+  barrisIncompletos: [],
   debitosPhenomena: [],
   configuracoes: {},
   retornos: [],
@@ -345,7 +346,18 @@ async function carregarInicio(force=false) {
   await carregarProducoesFermentando(true);
   await carregarConfiguracoesBase(true);
 
-  const [estoque, producoes, envases, clientes, insumosEstoque, saidas, retornos, movs, entradasInsumos] = await Promise.all([
+  const [
+    estoque,
+    producoes,
+    envases,
+    clientes,
+    insumosEstoque,
+    saidas,
+    retornos,
+    movs,
+    barrisIncompletos,
+    entradasInsumos
+  ] = await Promise.all([
     sb.from("estoque_cerveja").select("*"),
     sb.from("producoes").select("*").order("data_producao", { ascending:false }),
     sb.from("envases").select("*").order("data_envase", { ascending:false }),
@@ -354,6 +366,7 @@ async function carregarInicio(force=false) {
     sb.from("saidas").select("*").order("data_saida", { ascending:false }).limit(250),
     sb.from("retornos").select("*").order("data_retorno", { ascending:false }).limit(250),
     sb.from("movimentacoes").select("*").order("criado_em", { ascending:false }).limit(8),
+    sb.from("barris_incompletos").select("*").eq("status","DISPONIVEL"),
     sb.from("entradas_insumos").select("*").not("validade","is",null).order("validade", { ascending:true }).limit(100)
   ]);
 
@@ -363,9 +376,15 @@ async function carregarInicio(force=false) {
   const insumosRows = insumosEstoque.data || [];
   const saidaRows = saidas.data || [];
   const retornoRows = retornos.data || [];
+  const barrisIncompletosRows = barrisIncompletos.data || [];
 
-  const litrosEstoque = estoqueRows.reduce((s,r) => s + Number(r.litros || 0), 0);
-  const barrisDisponiveis = estoqueRows.reduce((s,r) => s + somaBarris(r.q10,r.q20,r.q30,r.q50), 0);
+  const litrosEstoque =
+    estoqueRows.reduce((s,r) => s + Number(r.litros || 0), 0)
+    + barrisIncompletosRows.reduce((s,r) => s + Number(r.litros_atuais || 0), 0);
+
+  const barrisDisponiveis =
+    estoqueRows.reduce((s,r) => s + somaBarris(r.q10,r.q20,r.q30,r.q50), 0)
+    + barrisIncompletosRows.length;
   const barrisSaidas = saidaRows.reduce((s,r) => s + somaBarris(r.q10,r.q20,r.q30,r.q50), 0);
   const barrisRetornos = retornoRows.reduce((s,r) => s + somaBarris(r.q10,r.q20,r.q30,r.q50), 0);
   const barrisEmClientes = Math.max(0, barrisSaidas - barrisRetornos);
@@ -390,8 +409,17 @@ async function carregarInicio(force=false) {
   document.getElementById("cardLupulo").innerText = fmt(lupulo, 1) + " G";
   document.getElementById("cardFermento").innerText = fmt(fermento, 1) + " UN";
 
-  const estoquePorCerveja = agruparSoma(estoqueRows, r => r.cerveja_nome, r => r.litros);
-  const estoquePorOrigem = agruparSoma(estoqueRows, r => r.origem, r => r.litros);
+  const estoqueComIncompletos = [
+    ...estoqueRows,
+    ...barrisIncompletosRows.map(r => ({
+      cerveja_nome:r.cerveja_nome,
+      origem:r.origem,
+      litros:Number(r.litros_atuais || 0)
+    }))
+  ];
+
+  const estoquePorCerveja = agruparSoma(estoqueComIncompletos, r => r.cerveja_nome, r => r.litros);
+  const estoquePorOrigem = agruparSoma(estoqueComIncompletos, r => r.origem, r => r.litros);
   const producaoMes = agruparPorMes(producoesRows, "data_producao", "litros_produzidos", 6);
   const envaseMes = agruparPorMes(envaseRows, "data_envase", "litros_total", 6);
   const saidasPorCerveja = agruparSoma(saidaRows, r => r.cerveja_nome, r => r.litros);
@@ -1118,17 +1146,23 @@ async function carregarEstoque(force=false) {
 }
 
 
-function renderResumoEstoqueOrigem(rows) {
+function renderResumoEstoqueOrigem(rows, barrisIncompletos=[]) {
   const box = document.getElementById("resumoEstoqueOrigem");
   if (!box) return;
 
   const origens = ["PRODUCAO","ITAPEMA","PHENOMENA"];
   const dados = origens.map(origem => {
     const itens = rows.filter(r => r.origem === origem);
+    const incompletos = barrisIncompletos.filter(r => r.origem === origem);
     return {
       origem,
-      litros: itens.reduce((s,r) => s + Number(r.litros || 0), 0),
-      barris: itens.reduce((s,r) => s + somaBarris(r.q10,r.q20,r.q30,r.q50), 0)
+      litros:
+        itens.reduce((s,r) => s + Number(r.litros || 0), 0)
+        + incompletos.reduce((s,r) => s + Number(r.litros_atuais || 0), 0),
+      barris:
+        itens.reduce((s,r) => s + somaBarris(r.q10,r.q20,r.q30,r.q50), 0)
+        + incompletos.length,
+      incompletos:incompletos.length
     };
   });
 
@@ -1138,21 +1172,72 @@ function renderResumoEstoqueOrigem(rows) {
       <div class="card">
         <span>${escapeHtml(d.origem)}</span>
         <strong>${fmt(d.litros)} L</strong>
-        <div class="sub">${d.barris} barril(is)</div>
+        <div class="sub">
+          ${d.barris} barril(is)
+          ${d.incompletos ? ` • ${d.incompletos} incompleto(s)` : ""}
+        </div>
       </div>
     `);
   });
 }
 
-function renderEstoqueCervejas(rows) {
+function renderEstoqueCervejas(rows, barrisIncompletos=[]) {
   const map = new Map();
 
-  state.cervejas.forEach(c => map.set(c.nome, { cerveja_nome:c.nome, litros:0, origens:[] }));
+  state.cervejas.forEach(c => map.set(c.nome, {
+    cerveja_nome:c.nome,
+    litros:0,
+    q10:0,
+    q20:0,
+    q30:0,
+    q50:0,
+    incompletos:[],
+    origens:[]
+  }));
+
   rows.forEach(r => {
-    const atual = map.get(r.cerveja_nome) || { cerveja_nome:r.cerveja_nome, litros:0, origens:[] };
+    const atual = map.get(r.cerveja_nome) || {
+      cerveja_nome:r.cerveja_nome,
+      litros:0,
+      q10:0,
+      q20:0,
+      q30:0,
+      q50:0,
+      incompletos:[],
+      origens:[]
+    };
+
     atual.litros += Number(r.litros || 0);
-    atual.origens.push(`${r.origem}: ${fmt(r.litros)}L`);
+    atual.q10 += Number(r.q10 || 0);
+    atual.q20 += Number(r.q20 || 0);
+    atual.q30 += Number(r.q30 || 0);
+    atual.q50 += Number(r.q50 || 0);
+    atual.origens.push({
+      origem:r.origem,
+      litros:Number(r.litros || 0),
+      q10:Number(r.q10 || 0),
+      q20:Number(r.q20 || 0),
+      q30:Number(r.q30 || 0),
+      q50:Number(r.q50 || 0)
+    });
     map.set(r.cerveja_nome, atual);
+  });
+
+  barrisIncompletos.forEach(b => {
+    const atual = map.get(b.cerveja_nome) || {
+      cerveja_nome:b.cerveja_nome,
+      litros:0,
+      q10:0,
+      q20:0,
+      q30:0,
+      q50:0,
+      incompletos:[],
+      origens:[]
+    };
+
+    atual.litros += Number(b.litros_atuais || 0);
+    atual.incompletos.push(b);
+    map.set(b.cerveja_nome, atual);
   });
 
   const lista = ordenarComZeradosFinal([...map.values()], r => r.cerveja_nome, r => r.litros);
@@ -1164,7 +1249,32 @@ function renderEstoqueCervejas(rows) {
       <div class="item searchable">
         <div>
           <strong>${escapeHtml(r.cerveja_nome)}</strong>
-          <div class="sub">${r.origens.length ? escapeHtml(r.origens.join(" • ")) : "Sem estoque"}</div>
+          <div class="sub">
+            ${
+              r.origens.length
+                ? r.origens.map(o => `
+                    ${escapeHtml(o.origem)}: ${fmt(o.litros)} L •
+                    10L=${o.q10} • 20L=${o.q20} • 30L=${o.q30} • 50L=${o.q50}
+                  `).join("<br>")
+                : "Sem estoque"
+            }
+          </div>
+          <div class="sub">
+            Total de barris: ${somaBarris(r.q10,r.q20,r.q30,r.q50) + r.incompletos.length} •
+            completos por tamanho:
+            10L=${r.q10} • 20L=${r.q20} • 30L=${r.q30} • 50L=${r.q50}
+          </div>
+          ${
+            r.incompletos.map(b => `
+              <div class="estoqueIncompleto">
+                <strong>INCOMPLETO</strong> •
+                ${fmt(b.litros_atuais,2)}/${fmt(b.capacidade_litros)} L •
+                ${escapeHtml(b.origem)}
+                ${b.codigo ? ` • código ${escapeHtml(b.codigo)}` : " • sem código"}
+                ${b.lote ? ` • lote ${escapeHtml(b.lote)}` : ""}
+              </div>
+            `).join("")
+          }
         </div>
         <span class="badge ${r.litros <= 0 ? "zero" : ""}">${fmt(r.litros)} L</span>
       </div>
@@ -3119,7 +3229,7 @@ async function gerarBackupJson() {
     "cervejas","insumos","clientes","estoque_cerveja","estoque_insumos",
     "producoes","producao_insumos","dry_hopping","envases","saidas","retornos",
     "entradas_insumos","ajustes_estoque","fermento_reuso","fermento_historico",
-    "phenomena_entradas","phenomena_debitos","phenomena_pagamentos","movimentacoes","configuracoes","backups"
+    "phenomena_entradas","barris_incompletos","phenomena_debitos","phenomena_pagamentos","movimentacoes","configuracoes","backups"
   ];
 
   const backup = {
@@ -4257,8 +4367,21 @@ async function carregarPhenomena(force=false) {
     qPagamentos = qPagamentos.lt("criado_em", periodo.ateIso);
   }
 
-  const [estoque, entradas, retiradas, debitos, pagamentos, debitosTodos] = await Promise.all([
+  const [
+    estoque,
+    incompletos,
+    entradas,
+    retiradas,
+    debitos,
+    pagamentos,
+    debitosTodos
+  ] = await Promise.all([
     sb.from("estoque_cerveja").select("*").eq("origem","PHENOMENA").order("cerveja_nome"),
+    sb.from("barris_incompletos")
+      .select("*")
+      .eq("origem","PHENOMENA")
+      .eq("status","DISPONIVEL")
+      .order("cerveja_nome"),
     qEntradas,
     qRetiradas,
     qDebitos,
@@ -4286,7 +4409,11 @@ async function carregarPhenomena(force=false) {
 
   const ebox = document.getElementById("estoquePhenomena");
   const rows = estoque.data || [];
-  ebox.innerHTML = rows.length ? "" : '<div class="item"><span class="sub">Nenhum estoque Phenomena.</span></div>';
+  const incompletosRows = incompletos.data || [];
+  ebox.innerHTML = (rows.length || incompletosRows.length)
+    ? ""
+    : '<div class="item"><span class="sub">Nenhum estoque Phenomena.</span></div>';
+
   ordenarComZeradosFinal(rows, r => r.cerveja_nome, r => r.litros).forEach(r => {
     ebox.insertAdjacentHTML("beforeend", `
       <div class="item">
@@ -4295,6 +4422,22 @@ async function carregarPhenomena(force=false) {
           <div class="sub">10L=${r.q10 || 0} • 20L=${r.q20 || 0} • 30L=${r.q30 || 0} • 50L=${r.q50 || 0}</div>
         </div>
         <span class="badge ${Number(r.litros || 0) <= 0 ? "zero" : ""}">${fmt(r.litros)} L</span>
+      </div>
+    `);
+  });
+
+  incompletosRows.forEach(b => {
+    ebox.insertAdjacentHTML("beforeend", `
+      <div class="item searchable">
+        <div>
+          <strong>${escapeHtml(b.cerveja_nome)} — INCOMPLETO</strong>
+          <div class="sub">
+            ${fmt(b.litros_atuais,2)}/${fmt(b.capacidade_litros)} L
+            ${b.codigo ? ` • código ${escapeHtml(b.codigo)}` : " • sem código"}
+            ${b.lote ? ` • lote ${escapeHtml(b.lote)}` : ""}
+          </div>
+        </div>
+        <span class="badge">${fmt(b.litros_atuais,2)} L</span>
       </div>
     `);
   });
@@ -4363,6 +4506,7 @@ async function carregarPhenomena(force=false) {
   state.phenomenaPeriodo = {
     periodo,
     estoque: rows,
+    incompletos: incompletosRows,
     entradas: entradasPeriodo,
     retiradas: retiradasPeriodo,
     debitos: debitosPeriodo,
@@ -6095,6 +6239,11 @@ async function prepararFormEnvase() {
     if (el && !el.value) el.value = "0";
   });
 
+  const tamanhoIncompleto = document.getElementById("envaseIncompletoTamanho");
+  const codigoIncompleto = document.getElementById("envaseIncompletoCodigo");
+  if (tamanhoIncompleto) tamanhoIncompleto.value = "";
+  if (codigoIncompleto) codigoIncompleto.value = "";
+
   atualizarResumoEnvase();
   instalarProtecaoFormularios();
 }
@@ -6172,6 +6321,14 @@ function atualizarResumoEnvase() {
     document.getElementById("envaseIncompleto")?.value || 0
   );
 
+  const tamanhoIncompleto = Number(
+    document.getElementById("envaseIncompletoTamanho")?.value || 0
+  );
+
+  const codigoIncompleto = String(
+    document.getElementById("envaseIncompletoCodigo")?.value || ""
+  ).trim();
+
   const barProprio = Number(
     document.getElementById("envaseBarProprio")?.value || 0
   );
@@ -6213,7 +6370,11 @@ function atualizarResumoEnvase() {
     </div>
     <div class="sub" style="margin-top:7px;">
       Barris completos: ${fmt(litrosBarrisCompletos)} L •
-      Barril incompleto: ${fmt(incompleto)} L •
+      Barril incompleto: ${
+        incompleto > 0
+          ? `${fmt(incompleto)} L${tamanhoIncompleto ? ` em barril de ${fmt(tamanhoIncompleto)} L` : " — selecione o tamanho"}${codigoIncompleto ? ` • código ${escapeHtml(codigoIncompleto)}` : ""}`
+          : "0 L"
+      } •
       Bar próprio: ${fmt(barProprio)} L
     </div>
     ${excesso > 0 ? `<div class="erro" style="display:block;">Excesso: ${fmt(excesso)} L</div>` : ""}
@@ -6222,6 +6383,8 @@ function atualizarResumoEnvase() {
   state.envaseCalculoAtual = {
     litrosBarrisCompletos,
     incompleto,
+    tamanhoIncompleto,
+    codigoIncompleto,
     barProprio,
     perdaDigitada,
     perdaFinal,
@@ -6243,6 +6406,8 @@ async function salvarEnvase() {
   const q30 = Number(document.getElementById("envaseQ30").value || 0);
   const q50 = Number(document.getElementById("envaseQ50").value || 0);
   const incompleto = Number(document.getElementById("envaseIncompleto").value || 0);
+  const tamanhoIncompleto = Number(document.getElementById("envaseIncompletoTamanho").value || 0);
+  const codigoIncompleto = document.getElementById("envaseIncompletoCodigo").value.trim();
   const barProprio = Number(document.getElementById("envaseBarProprio").value || 0);
   const perdaDigitada = Number(document.getElementById("envasePerdaInformada").value || 0);
   const finalizar = document.getElementById("envaseFinalizarLote").checked;
@@ -6250,6 +6415,24 @@ async function salvarEnvase() {
 
   if (!prod) {
     mostrarErro("envaseErro", "Selecione o lote.");
+    return;
+  }
+
+  if (incompleto > 0 && ![10,20,30,50].includes(tamanhoIncompleto)) {
+    mostrarErro("envaseErro", "Selecione o tamanho do último barril incompleto.");
+    return;
+  }
+
+  if (incompleto > tamanhoIncompleto && tamanhoIncompleto > 0) {
+    mostrarErro(
+      "envaseErro",
+      `O volume informado (${fmt(incompleto,2)} L) é maior que a capacidade do barril (${fmt(tamanhoIncompleto)} L).`
+    );
+    return;
+  }
+
+  if (incompleto <= 0 && (tamanhoIncompleto > 0 || codigoIncompleto)) {
+    mostrarErro("envaseErro", "Informe os litros do último barril incompleto ou remova seus detalhes.");
     return;
   }
 
@@ -6276,7 +6459,11 @@ async function salvarEnvase() {
   let resumo = `CONFIRMAR ENVASE\n\n`;
   resumo += `${prod.cerveja_nome} — lote ${lote}\n`;
   resumo += `Barris completos: ${fmt(calc.litrosBarrisCompletos)} L\n`;
-  resumo += `Último barril incompleto: ${fmt(incompleto)} L\n`;
+  resumo += `Último barril incompleto: ${
+    incompleto > 0
+      ? `${fmt(incompleto)} L em barril de ${fmt(tamanhoIncompleto)} L${codigoIncompleto ? ` • código ${codigoIncompleto}` : ""}`
+      : "0 L"
+  }\n`;
   resumo += `Bar próprio: ${fmt(barProprio)} L\n`;
   resumo += `Perda: ${fmt(calc.perdaFinal)} L\n`;
   resumo += `Saldo depois: ${fmt(calc.saldoDepois)} L\n`;
@@ -6298,7 +6485,9 @@ async function salvarEnvase() {
 
   const observacaoDetalhada = [
     obs,
-    `Barril incompleto: ${fmt(incompleto)} L`,
+    incompleto > 0
+      ? `Barril incompleto: ${fmt(incompleto)} L em barril de ${fmt(tamanhoIncompleto)} L${codigoIncompleto ? `, código ${codigoIncompleto}` : ""}`
+      : "",
     `Bar próprio: ${fmt(barProprio)} L`,
     `Perda: ${fmt(calc.perdaFinal)} L`,
     `Saldo após: ${fmt(calc.saldoDepois)} L`
@@ -6540,6 +6729,8 @@ function montarLinhaDoTempoLote(lote, insumosRows, dryRows, envaseRows, fermento
         : e.litros_incompleto_bar || 0
     );
 
+    const tamanhoIncompleto = Number(e.barril_incompleto_tamanho || 0);
+    const codigoIncompleto = String(e.barril_incompleto_codigo || "").trim();
     const bar = Number(e.litros_bar_proprio || 0);
 
     eventos.push({
@@ -6548,7 +6739,9 @@ function montarLinhaDoTempoLote(lote, insumosRows, dryRows, envaseRows, fermento
       texto:[
         `${fmt(e.litros_total)} L no total`,
         `${fmt(e.litros_barris)} L em barris completos`,
-        incompleto > 0 ? `${fmt(incompleto)} L no barril incompleto` : "",
+        incompleto > 0
+          ? `${fmt(incompleto)} L no barril incompleto${tamanhoIncompleto ? ` de ${fmt(tamanhoIncompleto)} L` : ""}${codigoIncompleto ? `, código ${codigoIncompleto}` : ""}`
+          : "",
         bar > 0 ? `${fmt(bar)} L para o bar próprio` : "",
         Number(e.perda || 0) > 0 ? `${fmt(e.perda)} L de perda` : "",
         e.saldo_apos !== undefined && e.saldo_apos !== null
@@ -6927,7 +7120,7 @@ async function carregarEstoque(force=false) {
 
   await carregarBaseCadastros(force);
 
-  const [ec, ei, ajustes] = await Promise.all([
+  const [ec, ei, ajustes, incompletos] = await Promise.all([
     sb.from("estoque_cerveja")
       .select("*")
       .order("cerveja_nome"),
@@ -6940,11 +7133,19 @@ async function carregarEstoque(force=false) {
     sb.from("ajustes_estoque")
       .select("*")
       .order("criado_em", { ascending:false })
-      .limit(25)
+      .limit(25),
+
+    sb.from("barris_incompletos")
+      .select("*")
+      .eq("status","DISPONIVEL")
+      .order("cerveja_nome")
+      .order("criado_em", { ascending:false })
   ]);
 
-  renderResumoEstoqueOrigem(ec.data || []);
-  renderEstoqueCervejas(ec.data || []);
+  state.barrisIncompletos = incompletos.data || [];
+
+  renderResumoEstoqueOrigem(ec.data || [], state.barrisIncompletos);
+  renderEstoqueCervejas(ec.data || [], state.barrisIncompletos);
   renderEstoqueInsumos(ei.data || []);
   renderHistoricoConferencias(ajustes.data || []);
 
@@ -6992,6 +7193,7 @@ async function executarBuscaGlobal() {
     producoes,
     saidas,
     retornos,
+    barrisIncompletos,
     movimentos
   ] = await Promise.all([
     sb.from("clientes").select("*").limit(500),
@@ -7000,6 +7202,7 @@ async function executarBuscaGlobal() {
     sb.from("producoes").select("*").order("criado_em", { ascending:false }).limit(800),
     sb.from("saidas").select("*").order("criado_em", { ascending:false }).limit(800),
     sb.from("retornos").select("*").order("criado_em", { ascending:false }).limit(800),
+    sb.from("barris_incompletos").select("*").order("criado_em", { ascending:false }).limit(800),
     sb.from("movimentacoes").select("*").order("criado_em", { ascending:false }).limit(800)
   ]);
 
@@ -7095,6 +7298,23 @@ async function executarBuscaGlobal() {
     }
   });
 
+  (barrisIncompletos.data || []).forEach(b => {
+    if (textoContemBusca(
+      [
+        b.cerveja_nome,b.lote,b.origem,b.codigo,
+        b.status,b.observacao,b.capacidade_litros,b.litros_atuais
+      ],
+      termo
+    )) {
+      resultados.push({
+        tipo:"Barril incompleto",
+        titulo:`${b.cerveja_nome} — ${fmt(b.litros_atuais,2)}/${fmt(b.capacidade_litros)} L`,
+        detalhe:`${b.origem} • ${b.codigo || "sem código"} • lote ${b.lote || "-"} • ${b.status}`,
+        acao:"mostrarTela('estoque')"
+      });
+    }
+  });
+
   (movimentos.data || []).forEach(m => {
     if (textoContemBusca(
       [
@@ -7170,7 +7390,7 @@ const TABELAS_BACKUP_ERP = [
   "cervejas","insumos","clientes","fermento_reuso",
   "estoque_cerveja","estoque_insumos","producoes",
   "producao_insumos","dry_hopping","envases","entradas_cerveja",
-  "phenomena_entradas","saidas","retornos","entradas_insumos",
+  "phenomena_entradas","barris_incompletos","saidas","retornos","entradas_insumos",
   "ajustes_estoque","fermento_historico","phenomena_debitos",
   "phenomena_pagamentos","movimentacoes","configuracoes","backups",
   "correcoes_lancamentos","restauracoes_backup"
@@ -7180,7 +7400,7 @@ const ORDEM_RESTAURACAO_ERP = [
   "cervejas","insumos","clientes","fermento_reuso",
   "estoque_cerveja","estoque_insumos","producoes",
   "producao_insumos","dry_hopping","envases","entradas_cerveja",
-  "phenomena_entradas","saidas","retornos","entradas_insumos",
+  "phenomena_entradas","barris_incompletos","saidas","retornos","entradas_insumos",
   "ajustes_estoque","fermento_historico","phenomena_debitos",
   "phenomena_pagamentos","movimentacoes","configuracoes","backups",
   "correcoes_lancamentos","restauracoes_backup"
@@ -7550,6 +7770,13 @@ async function salvarEnvase() {
   const q30 = Number(document.getElementById("envaseQ30").value || 0);
   const q50 = Number(document.getElementById("envaseQ50").value || 0);
   const incompleto = Number(document.getElementById("envaseIncompleto").value || 0);
+  const tamanhoIncompleto = Number(
+    document.getElementById("envaseIncompletoTamanho").value || 0
+  );
+  const codigoIncompleto = document
+    .getElementById("envaseIncompletoCodigo")
+    .value
+    .trim();
   const barProprio = Number(document.getElementById("envaseBarProprio").value || 0);
   const perdaDigitada = Number(document.getElementById("envasePerdaInformada").value || 0);
   const finalizar = document.getElementById("envaseFinalizarLote").checked;
@@ -7557,6 +7784,24 @@ async function salvarEnvase() {
 
   if (!prod) {
     mostrarErro("envaseErro", "Selecione o lote.");
+    return;
+  }
+
+  if (incompleto > 0 && ![10,20,30,50].includes(tamanhoIncompleto)) {
+    mostrarErro("envaseErro", "Selecione o tamanho do último barril incompleto.");
+    return;
+  }
+
+  if (incompleto > tamanhoIncompleto && tamanhoIncompleto > 0) {
+    mostrarErro(
+      "envaseErro",
+      `O volume informado (${fmt(incompleto,2)} L) é maior que a capacidade do barril (${fmt(tamanhoIncompleto)} L).`
+    );
+    return;
+  }
+
+  if (incompleto <= 0 && (tamanhoIncompleto > 0 || codigoIncompleto)) {
+    mostrarErro("envaseErro", "Informe os litros do último barril incompleto ou remova seus detalhes.");
     return;
   }
 
@@ -7586,7 +7831,11 @@ async function salvarEnvase() {
   let resumo = `CONFIRMAR ENVASE\n\n`;
   resumo += `${prod.cerveja_nome} — lote ${lote}\n`;
   resumo += `Barris completos: ${fmt(calc.litrosBarrisCompletos)} L\n`;
-  resumo += `Último barril incompleto: ${fmt(incompleto)} L\n`;
+  resumo += `Último barril incompleto: ${
+    incompleto > 0
+      ? `${fmt(incompleto)} L em barril de ${fmt(tamanhoIncompleto)} L${codigoIncompleto ? ` • código ${codigoIncompleto}` : ""}`
+      : "0 L"
+  }\n`;
   resumo += `Bar próprio: ${fmt(barProprio)} L\n`;
   resumo += `Perda: ${fmt(calc.perdaFinal)} L\n`;
   resumo += `Saldo depois: ${fmt(calc.saldoDepois)} L\n`;
@@ -7601,7 +7850,9 @@ async function salvarEnvase() {
 
   const observacaoDetalhada = [
     obs,
-    `Barril incompleto: ${fmt(incompleto)} L`,
+    incompleto > 0
+      ? `Barril incompleto: ${fmt(incompleto)} L em barril de ${fmt(tamanhoIncompleto)} L${codigoIncompleto ? `, código ${codigoIncompleto}` : ""}`
+      : "",
     `Bar próprio: ${fmt(barProprio)} L`,
     `Perda: ${fmt(calc.perdaFinal)} L`,
     `Saldo após: ${fmt(calc.saldoDepois)} L`
@@ -7618,6 +7869,8 @@ async function salvarEnvase() {
       litros_barris:calc.litrosBarrisCompletos,
       litros_incompleto_bar:incompleto + barProprio,
       litros_incompleto:incompleto,
+      barril_incompleto_tamanho:incompleto > 0 ? tamanhoIncompleto : null,
+      barril_incompleto_codigo:incompleto > 0 ? (codigoIncompleto || null) : null,
       litros_bar_proprio:barProprio,
       litros_total:calc.totalEnvaseAtual,
       perda:calc.perdaFinal,
@@ -7634,6 +7887,34 @@ async function salvarEnvase() {
     return;
   }
 
+  if (incompleto > 0) {
+    const cerveja = state.cervejas.find(c => c.nome === prod.cerveja_nome);
+    const { error:incompletoErro } = await sb
+      .from("barris_incompletos")
+      .insert({
+        envase_id:envase.id,
+        producao_id:prod.id,
+        cerveja_id:cerveja ? cerveja.id : null,
+        cerveja_nome:prod.cerveja_nome,
+        lote,
+        origem,
+        capacidade_litros:tamanhoIncompleto,
+        litros_atuais:incompleto,
+        codigo:codigoIncompleto || null,
+        status:"DISPONIVEL",
+        observacao:obs
+      });
+
+    if (incompletoErro) {
+      mostrarErro(
+        "envaseErro",
+        "O envase foi registrado, mas não foi possível disponibilizar o barril incompleto: "
+          + incompletoErro.message
+      );
+      return;
+    }
+  }
+
   if (calc.litrosBarrisCompletos > 0) {
     const erroEstoque = await somarEstoqueCerveja(
       prod.cerveja_nome,
@@ -7647,15 +7928,16 @@ async function salvarEnvase() {
       return;
     }
 
-    if (origem === "PHENOMENA") {
-      await sb.from("phenomena_entradas").insert({
-        envase_id:envase.id,
-        cerveja_nome:prod.cerveja_nome,
-        q10,q20,q30,q50,
-        litros:calc.litrosBarrisCompletos,
-        observacao:"Envase Phenomena: " + observacaoDetalhada
-      });
-    }
+  }
+
+  if (origem === "PHENOMENA" && (calc.litrosBarrisCompletos + incompleto) > 0) {
+    await sb.from("phenomena_entradas").insert({
+      envase_id:envase.id,
+      cerveja_nome:prod.cerveja_nome,
+      q10,q20,q30,q50,
+      litros:calc.litrosBarrisCompletos + incompleto,
+      observacao:"Envase Phenomena: " + observacaoDetalhada
+    });
   }
 
   await sb.from("producoes")
@@ -7690,6 +7972,8 @@ async function salvarEnvase() {
     document.getElementById(id).value = "0";
   });
 
+  document.getElementById("envaseIncompletoTamanho").value = "";
+  document.getElementById("envaseIncompletoCodigo").value = "";
   document.getElementById("envaseObs").value = "";
   document.getElementById("envaseFinalizarLote").checked = false;
 
