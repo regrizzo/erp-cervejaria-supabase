@@ -1,5 +1,5 @@
 
-const APP_BUILD = "estoque-somente-saldos-20260723";
+const APP_BUILD = "saidas-rufus-interno-20260723";
 
 // Evita o celular/PWA segurar arquivos antigos do app.
 (function limparCacheAntigo() {
@@ -219,6 +219,18 @@ function detalharBarrisComSaldo(q10,q20,q30,q50) {
     .join(" • ");
 }
 
+function normalizarNomeCliente(nome) {
+  return String(nome || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase();
+}
+
+function clienteControlaRetornoBarris(nome) {
+  return normalizarNomeCliente(nome) !== "RUFUS";
+}
+
 
 function agruparSoma(rows, keyFn, valueFn) {
   const mapa = new Map();
@@ -388,6 +400,8 @@ async function carregarInicio(force=false) {
   const insumosRows = insumosEstoque.data || [];
   const saidaRows = saidas.data || [];
   const retornoRows = retornos.data || [];
+  const saidaRowsComRetorno = saidaRows.filter(r => clienteControlaRetornoBarris(r.cliente_nome));
+  const retornoRowsComControle = retornoRows.filter(r => clienteControlaRetornoBarris(r.cliente_nome));
   const barrisIncompletosRows = barrisIncompletos.data || [];
 
   const litrosEstoque =
@@ -397,8 +411,8 @@ async function carregarInicio(force=false) {
   const barrisDisponiveis =
     estoqueRows.reduce((s,r) => s + somaBarris(r.q10,r.q20,r.q30,r.q50), 0)
     + barrisIncompletosRows.length;
-  const barrisSaidas = saidaRows.reduce((s,r) => s + somaBarris(r.q10,r.q20,r.q30,r.q50), 0);
-  const barrisRetornos = retornoRows.reduce((s,r) => s + somaBarris(r.q10,r.q20,r.q30,r.q50), 0);
+  const barrisSaidas = saidaRowsComRetorno.reduce((s,r) => s + somaBarris(r.q10,r.q20,r.q30,r.q50), 0);
+  const barrisRetornos = retornoRowsComControle.reduce((s,r) => s + somaBarris(r.q10,r.q20,r.q30,r.q50), 0);
   const barrisEmClientes = Math.max(0, barrisSaidas - barrisRetornos);
 
   const litrosProduzidos = producoesRows.reduce((s,r) => s + Number(r.litros_produzidos || 0), 0);
@@ -497,11 +511,13 @@ async function carregarInicio(force=false) {
 
   const barrisPorCliente = new Map();
   saidaRows.forEach(s => {
+    if (!clienteControlaRetornoBarris(s.cliente_nome)) return;
     const atual = barrisPorCliente.get(s.cliente_nome) || { cliente:s.cliente_nome, saidas:0, retornos:0 };
     atual.saidas += somaBarris(s.q10,s.q20,s.q30,s.q50);
     barrisPorCliente.set(s.cliente_nome, atual);
   });
   retornoRows.forEach(r => {
+    if (!clienteControlaRetornoBarris(r.cliente_nome)) return;
     const atual = barrisPorCliente.get(r.cliente_nome) || { cliente:r.cliente_nome, saidas:0, retornos:0 };
     atual.retornos += somaBarris(r.q10,r.q20,r.q30,r.q50);
     barrisPorCliente.set(r.cliente_nome, atual);
@@ -3008,30 +3024,17 @@ async function carregarPainelDia(force=false) {
 
   const limiteData = new Date();
   limiteData.setDate(limiteData.getDate() - diasBarrilCliente);
-  const retornosPorCliente = new Map();
-  (retornosPainel.data || []).forEach(r => {
-    retornosPorCliente.set(r.cliente_nome, (retornosPorCliente.get(r.cliente_nome) || 0) + somaBarris(r.q10,r.q20,r.q30,r.q50));
-  });
-
-  const antigosPorCliente = new Map();
-  (saidasPainel.data || []).forEach(s => {
-    const dataSaida = new Date((s.data_saida || "").slice(0,10) + "T00:00:00");
-    if (dataSaida <= limiteData) {
-      const atual = antigosPorCliente.get(s.cliente_nome) || { cliente:s.cliente_nome, barris:0, dataMaisAntiga:s.data_saida };
-      atual.barris += somaBarris(s.q10,s.q20,s.q30,s.q50);
-      if (s.data_saida < atual.dataMaisAntiga) atual.dataMaisAntiga = s.data_saida;
-      antigosPorCliente.set(s.cliente_nome, atual);
-    }
-  });
-
-  const alertasBarris = [...antigosPorCliente.values()].map(c => {
-    const retornados = retornosPorCliente.get(c.cliente) || 0;
-    return { ...c, abertoAproximado: Math.max(0, c.barris - retornados) };
-  }).filter(c => c.abertoAproximado > 0);
+  const alertasBarris = agruparAbertosPorCliente(
+    saidasPainel.data || [],
+    retornosPainel.data || []
+  ).filter(c => (
+    c.dataMaisAntiga
+    && new Date(String(c.dataMaisAntiga).slice(0,10) + "T00:00:00") <= limiteData
+  ));
 
   itens.push({
     titulo:`🛢️ Barris há ${diasBarrilCliente}+ dias em clientes`,
-    linhas: alertasBarris.map(c => `${c.cliente}: ${c.abertoAproximado} barril(is) em aberto aprox. • saída mais antiga ${dataBR(c.dataMaisAntiga)}`)
+    linhas: alertasBarris.map(c => `${c.cliente}: ${c.aberto} barril(is) em aberto • saída mais antiga ${dataBR(c.dataMaisAntiga)}`)
   });
 
   const diasValidade = getConfigNumero("dias_alerta_validade_insumos", 30);
@@ -3478,7 +3481,9 @@ async function prepararFormSaida() {
 function prepararSelectClientes(id) {
   const sel = document.getElementById(id);
   sel.innerHTML = '<option value="">Selecionar cliente...</option>';
-  state.clientes.forEach(c => {
+  state.clientes
+    .filter(c => id !== "retornoCliente" || clienteControlaRetornoBarris(c.nome))
+    .forEach(c => {
     const op = document.createElement("option");
     op.value = c.id;
     op.textContent = c.estabelecimento ? `${c.nome} — ${c.estabelecimento}` : c.nome;
@@ -3654,7 +3659,7 @@ async function salvarSaidaMultipla() {
   let resumo = `Cliente: ${cliente_nome}\n\n`;
   simulacoes.forEach(({ item, sim }) => {
     resumo += `${item.cerveja_nome} — ${fmt(litrosBarris(item.q10,item.q20,item.q30,item.q50))} L\n`;
-    resumo += `Barris: 10L=${item.q10}, 20L=${item.q20}, 30L=${item.q30}, 50L=${item.q50}\n`;
+    resumo += `Barris: ${detalharBarrisComSaldo(item.q10,item.q20,item.q30,item.q50)}\n`;
     resumo += `Baixa automática: ${Object.entries(sim.resumoPorOrigem).map(([o,l]) => `${o}: ${fmt(l)}L`).join(" • ")}\n`;
     if (item.codigos_barris) resumo += `Códigos: ${item.codigos_barris}\n`;
     resumo += "\n";
@@ -3938,15 +3943,19 @@ function calcularAbertoDetalhado(saidasRows, retornosRows, clienteId="", cliente
 
   const saidas = (saidasRows || []).filter(filtroSaida);
   const retornos = (retornosRows || []).filter(filtroRetorno);
+  const controlaRetorno = clienteControlaRetornoBarris(
+    clienteNome || saidas[0]?.cliente_nome || retornos[0]?.cliente_nome
+  );
 
   const out = {
-    q10: Math.max(0, saidas.reduce((s,r)=>s+Number(r.q10||0),0) - retornos.reduce((s,r)=>s+Number(r.q10||0),0)),
-    q20: Math.max(0, saidas.reduce((s,r)=>s+Number(r.q20||0),0) - retornos.reduce((s,r)=>s+Number(r.q20||0),0)),
-    q30: Math.max(0, saidas.reduce((s,r)=>s+Number(r.q30||0),0) - retornos.reduce((s,r)=>s+Number(r.q30||0),0)),
-    q50: Math.max(0, saidas.reduce((s,r)=>s+Number(r.q50||0),0) - retornos.reduce((s,r)=>s+Number(r.q50||0),0)),
+    q10: controlaRetorno ? Math.max(0, saidas.reduce((s,r)=>s+Number(r.q10||0),0) - retornos.reduce((s,r)=>s+Number(r.q10||0),0)) : 0,
+    q20: controlaRetorno ? Math.max(0, saidas.reduce((s,r)=>s+Number(r.q20||0),0) - retornos.reduce((s,r)=>s+Number(r.q20||0),0)) : 0,
+    q30: controlaRetorno ? Math.max(0, saidas.reduce((s,r)=>s+Number(r.q30||0),0) - retornos.reduce((s,r)=>s+Number(r.q30||0),0)) : 0,
+    q50: controlaRetorno ? Math.max(0, saidas.reduce((s,r)=>s+Number(r.q50||0),0) - retornos.reduce((s,r)=>s+Number(r.q50||0),0)) : 0,
     litrosSaidos: saidas.reduce((s,r)=>s+Number(r.litros||0),0),
     barrisSaidos: saidas.reduce((s,r)=>s+somaBarris(r.q10,r.q20,r.q30,r.q50),0),
-    barrisRetornados: retornos.reduce((s,r)=>s+somaBarris(r.q10,r.q20,r.q30,r.q50),0)
+    barrisRetornados: controlaRetorno ? retornos.reduce((s,r)=>s+somaBarris(r.q10,r.q20,r.q30,r.q50),0) : 0,
+    controlaRetorno
   };
   out.aberto = Math.max(0, out.q10 + out.q20 + out.q30 + out.q50);
   return out;
@@ -3956,6 +3965,7 @@ function agruparAbertosPorCliente(saidasRows, retornosRows) {
   const mapa = new Map();
 
   (saidasRows || []).forEach(s => {
+    if (!clienteControlaRetornoBarris(s.cliente_nome)) return;
     const key = s.cliente_id || s.cliente_nome;
     if (!mapa.has(key)) mapa.set(key, { cliente_id:s.cliente_id, cliente:s.cliente_nome, q10:0,q20:0,q30:0,q50:0, saidas:0, retornos:0, litros:0, dataMaisAntiga:s.data_saida });
     const c = mapa.get(key);
@@ -3969,6 +3979,7 @@ function agruparAbertosPorCliente(saidasRows, retornosRows) {
   });
 
   (retornosRows || []).forEach(r => {
+    if (!clienteControlaRetornoBarris(r.cliente_nome)) return;
     const key = r.cliente_id || r.cliente_nome;
     if (!mapa.has(key)) mapa.set(key, { cliente_id:r.cliente_id, cliente:r.cliente_nome, q10:0,q20:0,q30:0,q50:0, saidas:0, retornos:0, litros:0, dataMaisAntiga:null });
     const c = mapa.get(key);
@@ -4035,6 +4046,10 @@ function preencherRetornoAberto() {
 }
 
 async function abrirRetornoCliente(clienteId, clienteNome) {
+  if (!clienteControlaRetornoBarris(clienteNome)) {
+    alert("RUFUS é uso interno da cervejaria e não precisa de registro de retorno.");
+    return;
+  }
   mostrarTela("retornos");
   document.querySelectorAll(".formBox").forEach(f => f.style.display = "none");
   const form = document.getElementById("formRetorno");
@@ -4071,6 +4086,11 @@ async function salvarRetorno() {
 
   if (!clienteId || !cliente_nome) {
     mostrarErro("retornoErro", "Selecione o cliente.");
+    return;
+  }
+
+  if (!clienteControlaRetornoBarris(cliente_nome)) {
+    mostrarErro("retornoErro", "RUFUS é uso interno da cervejaria e não precisa de registro de retorno.");
     return;
   }
 
@@ -4683,6 +4703,12 @@ function extrairCodigosBarris(texto) {
 }
 
 function montarCodigosAbertosCliente(saidasRows, retornosRows, clienteId="", clienteNome="") {
+  if (!clienteControlaRetornoBarris(
+    clienteNome
+    || (saidasRows || []).find(s => !clienteId || s.cliente_id === clienteId)?.cliente_nome
+    || (retornosRows || []).find(r => !clienteId || r.cliente_id === clienteId)?.cliente_nome
+  )) return [];
+
   const filtraClienteSaida = s => clienteId ? s.cliente_id === clienteId : s.cliente_nome === clienteNome;
   const filtraClienteRetorno = r => clienteId ? r.cliente_id === clienteId : r.cliente_nome === clienteNome;
 
@@ -4724,11 +4750,13 @@ function agruparCodigosAbertosPorCliente(saidasRows, retornosRows) {
   const clientes = new Map();
 
   (saidasRows || []).forEach(s => {
+    if (!clienteControlaRetornoBarris(s.cliente_nome)) return;
     const key = s.cliente_id || s.cliente_nome;
     if (!clientes.has(key)) clientes.set(key, { cliente_id:s.cliente_id, cliente_nome:s.cliente_nome });
   });
 
   (retornosRows || []).forEach(r => {
+    if (!clienteControlaRetornoBarris(r.cliente_nome)) return;
     const key = r.cliente_id || r.cliente_nome;
     if (!clientes.has(key)) clientes.set(key, { cliente_id:r.cliente_id, cliente_nome:r.cliente_nome });
   });
@@ -4746,7 +4774,7 @@ function renderCodigosTags(codigos, limite=80) {
   return `<div class="codigoGrid">${
     codigos.slice(0, limite).map(c => {
       const dias = c.data_saida ? Math.max(0, Math.floor((hoje - new Date(c.data_saida + "T00:00:00")) / 86400000)) : 0;
-      const cls = dias >= getConfigNumero("dias_alerta_barril_cliente", 21) ? "atrasado" : "";
+      const cls = clienteControlaRetornoBarris(c.cliente_nome) && dias >= getConfigNumero("dias_alerta_barril_cliente", 21) ? "atrasado" : "";
       return `<span class="codigoTag ${cls}" title="${escapeHtml(c.cerveja_nome || "")} • ${dias} dia(s)">${escapeHtml(c.codigo)}</span>`;
     }).join("")
   }</div>`;
@@ -4863,7 +4891,7 @@ async function salvarSaidaMultipla() {
   let resumo = `Cliente: ${cliente_nome}\n\n`;
   simulacoes.forEach(({ item, sim }) => {
     resumo += `${item.cerveja_nome} — ${item.somente_codigo ? "controle de barril/código" : fmt(litrosBarris(item.q10,item.q20,item.q30,item.q50)) + " L"}\n`;
-    resumo += `Barris: 10L=${item.q10}, 20L=${item.q20}, 30L=${item.q30}, 50L=${item.q50}\n`;
+    resumo += `Barris: ${detalharBarrisComSaldo(item.q10,item.q20,item.q30,item.q50)}\n`;
     if (item.somente_codigo) {
       resumo += `Baixa de estoque: NÃO\n`;
     } else {
@@ -4991,13 +5019,15 @@ async function carregarSaidas(force=false) {
   grupos.forEach(g => {
     const itensHtml = g.itens.map(i => {
       const semBaixa = String(i.origem_baixada || "").includes("SEM BAIXA");
-      return `${escapeHtml(i.cerveja_nome)}: ${semBaixa ? "sem baixa de estoque" : fmt(i.litros) + " L"} • 10L=${i.q10||0} • 20L=${i.q20||0} • 30L=${i.q30||0} • 50L=${i.q50||0}`;
+      const barris = detalharBarrisComSaldo(i.q10,i.q20,i.q30,i.q50);
+      return `${escapeHtml(i.cerveja_nome)}: ${semBaixa ? "sem baixa de estoque" : fmt(i.litros) + " L"}${barris ? " • " + barris : ""}`;
     }).join("<br>");
 
     const codigos = g.itens.flatMap(i => extrairCodigosBarris(i.codigos_barris).map(c => ({
       codigo:c,
       cerveja_nome:i.cerveja_nome,
-      data_saida:g.data_saida
+      data_saida:g.data_saida,
+      cliente_nome:g.cliente_nome
     })));
 
     const origemHtml = g.origem.length ? `<div class="sub">Baixa: ${escapeHtml(g.origem.join(" | "))}</div>` : "";
@@ -5091,6 +5121,11 @@ async function salvarRetorno() {
     return;
   }
 
+  if (!clienteControlaRetornoBarris(cliente_nome)) {
+    mostrarErro("retornoErro", "RUFUS é uso interno da cervejaria e não precisa de registro de retorno.");
+    return;
+  }
+
   const total = somaBarris(q10,q20,q30,q50);
   if (total <= 0) {
     mostrarErro("retornoErro", "Informe pelo menos um barril retornado.");
@@ -5166,20 +5201,23 @@ async function carregarRetornos(force=false) {
 
   const saidaRows = saidas.data || [];
   const retornosRows = retornos.data || [];
+  const saidaRowsComRetorno = saidaRows.filter(r => clienteControlaRetornoBarris(r.cliente_nome));
+  const retornosRowsComControle = retornosRows.filter(r => clienteControlaRetornoBarris(r.cliente_nome));
   state.retornos = retornosRows;
   state.retornosSaidasBase = saidaRows;
 
-  const totalSaidaBarris = saidaRows.reduce((s,r) => s + somaBarris(r.q10,r.q20,r.q30,r.q50), 0);
-  const totalRetornoBarris = retornosRows.reduce((s,r) => s + somaBarris(r.q10,r.q20,r.q30,r.q50), 0);
+  const totalSaidaBarris = saidaRowsComRetorno.reduce((s,r) => s + somaBarris(r.q10,r.q20,r.q30,r.q50), 0);
+  const totalRetornoBarris = retornosRowsComControle.reduce((s,r) => s + somaBarris(r.q10,r.q20,r.q30,r.q50), 0);
   const abertos = Math.max(0, totalSaidaBarris - totalRetornoBarris);
-  const porCliente = agruparAbertosPorCliente(saidaRows, retornosRows);
-  const codigosPorCliente = agruparCodigosAbertosPorCliente(saidaRows, retornosRows);
+  const porCliente = agruparAbertosPorCliente(saidaRowsComRetorno, retornosRowsComControle);
+  const codigosPorCliente = agruparCodigosAbertosPorCliente(saidaRowsComRetorno, retornosRowsComControle);
   const mapaCodigos = new Map(codigosPorCliente.map(c => [c.cliente_id || c.cliente_nome, c.codigos]));
 
   const limite = new Date();
   limite.setDate(limite.getDate() - getConfigNumero("dias_alerta_barril_cliente", 21));
-  const saidasAntigas = saidaRows.filter(s => new Date(String(s.data_saida) + "T00:00:00") <= limite);
-  const barrisAntigosAprox = Math.max(0, saidasAntigas.reduce((s,r)=>s+somaBarris(r.q10,r.q20,r.q30,r.q50),0) - totalRetornoBarris);
+  const barrisAntigosAprox = porCliente
+    .filter(c => c.dataMaisAntiga && new Date(String(c.dataMaisAntiga) + "T00:00:00") <= limite)
+    .reduce((s,c) => s + Number(c.aberto || 0), 0);
 
   if (document.getElementById("retornosBarrisAbertos")) document.getElementById("retornosBarrisAbertos").innerText = abertos;
   if (document.getElementById("retornosTotalRegistrados")) document.getElementById("retornosTotalRegistrados").innerText = totalRetornoBarris;
@@ -5296,14 +5334,21 @@ async function carregarExtratoCliente() {
       <div class="card"><span>Códigos em aberto</span><strong>${codigosAbertos.length}</strong></div>
     </div>
 
-    <div class="item blocoVertical">
-      <strong>Barris em aberto</strong>
-      <div class="sub">10L=${aberto.q10} • 20L=${aberto.q20} • 30L=${aberto.q30} • 50L=${aberto.q50}</div>
-      <div class="codigosBox"><strong>Códigos em aberto</strong>${renderCodigosTags(codigosAbertos)}</div>
-      <div class="rowActions">
-        <button class="btnTiny btnEdit" onclick="abrirRetornoCliente('${clienteId}','${escapeHtml(clienteNome)}')">Registrar retorno deste cliente</button>
+    ${aberto.controlaRetorno ? `
+      <div class="item blocoVertical">
+        <strong>Barris em aberto</strong>
+        <div class="sub">${detalharBarrisComSaldo(aberto.q10,aberto.q20,aberto.q30,aberto.q50) || "Nenhum barril em aberto."}</div>
+        <div class="codigosBox"><strong>Códigos em aberto</strong>${renderCodigosTags(codigosAbertos)}</div>
+        <div class="rowActions">
+          <button class="btnTiny btnEdit" onclick="abrirRetornoCliente('${clienteId}','${escapeHtml(clienteNome)}')">Registrar retorno deste cliente</button>
+        </div>
       </div>
-    </div>
+    ` : `
+      <div class="item blocoVertical">
+        <strong>Uso interno da cervejaria</strong>
+        <div class="sub">As saídas para RUFUS não geram barris em aberto e não precisam de registro de retorno.</div>
+      </div>
+    `}
 
     <div class="item blocoVertical">
       <strong>Cervejas baixadas do estoque</strong>
@@ -5513,7 +5558,7 @@ async function salvarSaidaMultipla() {
 
   simulacoes.forEach(({ item, sim }) => {
     resumo += `${item.cerveja_nome} — ${fmt(litrosBarris(item.q10,item.q20,item.q30,item.q50))} L\n`;
-    resumo += `Barris: 10L=${item.q10}, 20L=${item.q20}, 30L=${item.q30}, 50L=${item.q50}\n`;
+    resumo += `Barris: ${detalharBarrisComSaldo(item.q10,item.q20,item.q30,item.q50)}\n`;
     resumo += `Baixa automática: ${Object.entries(sim.resumoPorOrigem).map(([o,l]) => `${o}: ${fmt(l)}L`).join(" • ")}\n`;
 
     if (item.codigos_barris) {
@@ -7672,7 +7717,7 @@ async function salvarSaidaMultipla() {
       litrosBarris(item.q10,item.q20,item.q30,item.q50)
     )} L\n`;
 
-    resumo += `Barris: 10L=${item.q10}, 20L=${item.q20}, 30L=${item.q30}, 50L=${item.q50}\n`;
+    resumo += `Barris: ${detalharBarrisComSaldo(item.q10,item.q20,item.q30,item.q50)}\n`;
 
     resumo += `Baixa automática: ${
       Object.entries(sim.resumoPorOrigem)
